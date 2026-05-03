@@ -587,6 +587,36 @@
     animation: pulse 1.2s ease-in-out infinite;
   }
 
+  /* Recording-mode compaction: hide the card selector + status while we're
+     recording so the timer + Stop button fit on a phone without scrolling.
+     Status is still used during upload/transcribe phases. */
+  .recording .row .grow { display: none; }
+  .recording .status { display: none; }
+  .rec-display {
+    text-align: center;
+    padding: 8px 0 4px;
+  }
+  .rec-display .rec-timer {
+    font-family: var(--font-mono);
+    font-size: 36px;
+    font-weight: 600;
+    color: var(--accent-2);
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .rec-display .rec-hint {
+    color: var(--muted);
+    margin-top: 4px;
+    font-size: 13px;
+  }
+  @media (max-width: 640px) {
+    .rec-display { padding: 6px 0 2px; }
+    .rec-display .rec-timer { font-size: 30px; }
+    .rec-display .rec-hint { font-size: 12px; }
+    .recording .transcript { min-height: 80px; padding: 8px; }
+  }
+
   .transcript {
     margin-top: 14px;
     padding: 16px;
@@ -1269,6 +1299,7 @@ const cardSelect = document.getElementById("cardSelect");
 const startBtn = document.getElementById("startBtn");
 const stopBtn  = document.getElementById("stopBtn");
 const convChip = document.getElementById("convChip");
+const convPanel = document.getElementById("convPanel");
 const convStatus = document.getElementById("convStatus");
 const transcriptEl = document.getElementById("transcript");
 const summaryEl = document.getElementById("summary");
@@ -1295,16 +1326,18 @@ function fmtTime(ms) {
 
 function paintTimer() {
   const elapsed = Date.now() - recStartMs;
-  transcriptEl.innerHTML = `
-    <div style="text-align:center; padding:18px 0;">
-      <div style="font-size:36px; font-weight:600; color:var(--accent-2); letter-spacing:.04em;">
-        ${fmtTime(elapsed)}
-      </div>
-      <div style="color:var(--muted); margin-top:6px;">
-        Recording — click <b>Stop</b> when done.<br/>
-        <span style="font-size:12px;">Audio is sent to Whisper for transcription on Stop.</span>
-      </div>
-    </div>`;
+  // Render the wrapper + hint once, then update only the timer text on each
+  // tick. Avoids flashing and keeps DOM stable.
+  let timerNode = document.getElementById("recTimerText");
+  if (!timerNode) {
+    transcriptEl.innerHTML = `
+      <div class="rec-display">
+        <div class="rec-timer" id="recTimerText">${fmtTime(elapsed)}</div>
+        <div class="rec-hint">Recording — tap <b>Stop</b> to finish</div>
+      </div>`;
+  } else {
+    timerNode.textContent = fmtTime(elapsed);
+  }
 }
 
 async function loadCards() {
@@ -1429,14 +1462,16 @@ startBtn.addEventListener("click", async () => {
 
   convChip.textContent = "recording";
   setConvTabLive(true);                    // show pulsing dot on Conversation tab
+  convPanel.classList.add("recording");    // hides card selector + status; tightens timer area
   startBtn.style.display = "none";
   stopBtn.style.display = "";
-  setConvStatus("Recording — speak normally. Click Stop when done.");
+  // Status hint is implicit in the timer area now.
 });
 
 stopBtn.addEventListener("click", async () => {
   convChip.textContent = "uploading";
   setConvTabLive(false);
+  convPanel.classList.remove("recording");   // restore card selector + status visibility
   stopBtn.style.display = "none";
   startBtn.style.display = "";
   setConvStatus("Stopping recording…");
