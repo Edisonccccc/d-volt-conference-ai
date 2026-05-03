@@ -1,0 +1,46 @@
+# Render blueprint for the Conference AI Assistant backend.
+#
+# Apply with the Render dashboard:
+#   New → Blueprint → connect this repo → Apply.
+# Render reads this file from the repo root and provisions everything declared
+# below. Edit and re-apply to mutate.
+#
+# Why these choices:
+# - `runtime: docker` so we use the repo Dockerfile (Python 3.11-slim, both
+#   backend/ and web/ included).
+# - `plan: starter` (~$7/mo) gets us always-on + persistent disk. Free tier
+#   spins down after 15 min and loses disk state, which would wipe your
+#   SQLite + uploads. Downgrade to `free` for a quick demo and back up if
+#   serious.
+# - `disk` mounts a 1 GB volume at /data — backend reads DATA_DIR from env.
+# - `sync: false` on secret env vars means Render won't echo their values
+#   when previewing PR changes, and you set them once in the dashboard.
+services:
+  - type: web
+    name: conference-ai
+    runtime: docker
+    plan: starter
+    region: oregon            # change to your nearest region
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true          # auto-redeploy on push to main
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-5
+      - key: WHISPER_MODEL
+        value: whisper-1
+      - key: COMPANY_CONTEXT
+        sync: false
+      - key: DATA_DIR
+        value: /data
+      - key: LOG_LEVEL
+        value: INFO
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

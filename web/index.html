@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Conference AI Assistant — Card Tester</title>
+<meta name="x-app-version" content="v0.2.0" />
+<style>
+  :root {
+    --bg: #f7f8fb;
+    --card: #ffffff;
+    --ink: #14213d;
+    --muted: #5b6677;
+    --soft: #9aa3b6;
+    --accent: #0b3d91;
+    --accent-2: #2563eb;
+    --border: #e3e6ee;
+    --ok: #157f3a;
+    --err: #b00020;
+    --chip: #eef2ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  header h1 { margin: 0; font-size: 18px; color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main {
+    max-width: 1100px;
+    margin: 24px auto;
+    padding: 0 16px;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .panel h2 { margin: 0 0 10px; font-size: 14px; color: var(--accent); letter-spacing: .03em; text-transform: uppercase; }
+
+  /* drop area */
+  .drop {
+    border: 2px dashed #b9c1d3;
+    border-radius: 10px;
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    display: block;
+  }
+  .drop:hover, .drop.drag { background: #f0f4ff; border-color: var(--accent-2); color: var(--accent-2); }
+  .drop input { display: none; }
+  .preview { margin-top: 12px; }
+  .preview img { width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+
+  /* primary button */
+  button {
+    background: var(--accent);
+    color: white;
+    border: 0;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  button[disabled] { background: #aab2c5; cursor: not-allowed; }
+  button.secondary { background: white; color: var(--accent); border: 1px solid var(--accent); }
+
+  /* spinners */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .btn-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    display: none;
+  }
+  button.loading .btn-spinner { display: inline-block; }
+
+  /* status pill */
+  .status {
+    margin-top: 14px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #f3f5fa;
+    color: var(--muted);
+    font-size: 13px;
+    display: none;
+  }
+  .status.show { display: block; }
+  .status.err { background: #fdecef; color: var(--err); }
+
+  /* chips */
+  .chip {
+    display: inline-block;
+    background: var(--chip);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+
+  /* category chip — distinct color per company-category bucket */
+  .cat-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-right: 8px;
+    vertical-align: middle;
+    border: 1px solid transparent;
+  }
+  .cat-utility   { background:#e6f4ff; color:#0b66c2; border-color:#b6dcff; }
+  .cat-vendor    { background:#fef3e6; color:#a14b00; border-color:#fadeb5; }
+  .cat-epc       { background:#eee9ff; color:#5b3eb8; border-color:#cfc3f5; }
+  .cat-sales     { background:#e6f9ee; color:#0a7a3b; border-color:#b9ecca; }
+  .cat-distributor { background:#fff2e0; color:#9c5300; border-color:#fdd9aa; }
+  .cat-enduser   { background:#fde8ec; color:#a31427; border-color:#f7c2cb; }
+  .cat-other     { background:#eef0f6; color:#3b475c; border-color:#d6dae5; }
+  .cat-rationale { color: var(--muted); font-size: 13px; margin-top: 6px; font-style: italic; }
+
+  /* indeterminate top progress bar */
+  .progressbar {
+    height: 4px;
+    width: 100%;
+    background: var(--border);
+    border-radius: 100px;
+    overflow: hidden;
+    margin: 4px 0 12px;
+    display: none;
+  }
+  .progressbar.show { display: block; }
+  .progressbar > span {
+    display: block;
+    height: 100%;
+    width: 35%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 100px;
+    animation: bar-slide 1.4s ease-in-out infinite;
+  }
+  @keyframes bar-slide {
+    0%   { margin-left: -35%; }
+    50%  { margin-left: 50%; }
+    100% { margin-left: 100%; }
+  }
+
+  /* progress stages */
+  .stages {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fafbff;
+    overflow: hidden;
+  }
+  .stage {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    color: var(--soft);
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+    transition: color .25s, background .25s;
+  }
+  .stage:last-child { border-bottom: 0; }
+  .stage .dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #d1d6e2;
+    background: white;
+    flex-shrink: 0;
+    position: relative;
+    transition: border-color .2s, background .2s;
+  }
+  .stage .label { flex: 1; }
+  .stage .meta { font-size: 12px; color: var(--soft); }
+
+  .stage.active {
+    color: var(--accent-2);
+    background: #eef4ff;
+    font-weight: 500;
+  }
+  .stage.active .dot {
+    border-color: var(--accent-2);
+    border-top-color: transparent;
+    animation: spin .9s linear infinite;
+  }
+  .stage.active .meta { color: var(--accent-2); animation: pulse 1.5s ease-in-out infinite; }
+
+  .stage.done { color: var(--ok); }
+  .stage.done .dot {
+    background: var(--ok);
+    border-color: var(--ok);
+    animation: none;
+  }
+  .stage.done .dot::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 6px;
+    height: 10px;
+    border-right: 2px solid white;
+    border-bottom: 2px solid white;
+    transform: rotate(45deg);
+  }
+  .stage.failed { color: var(--err); }
+  .stage.failed .dot {
+    background: var(--err);
+    border-color: var(--err);
+    animation: none;
+  }
+  .stage.failed .dot::after {
+    content: "✕";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  /* result body */
+  .field { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; padding: 4px 0; border-bottom: 1px dashed #eef0f6; font-size: 14px; }
+  .field b { color: var(--muted); font-weight: 500; }
+  .field:last-child { border-bottom: 0; }
+  .empty { color: var(--soft); font-style: italic; }
+  ul.bullets { margin: 4px 0 0 0; padding-left: 18px; }
+  ul.bullets li { margin: 4px 0; }
+  .pdf-row { margin-top: 14px; display: flex; gap: 10px; }
+  .pdf-row a { flex: 1; display: block; text-align: center; text-decoration: none; }
+  details { margin-top: 8px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  pre { white-space: pre-wrap; background: #f3f5fa; padding: 10px; border-radius: 6px; font-size: 12px; overflow-x: auto; }
+  .meta-line { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* live conversation panel */
+  .full-row { grid-column: 1 / -1; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 0 0 auto; }
+  .row .grow { flex: 1 1 auto; min-width: 200px; }
+  select, input[type="text"] {
+    border: 1px solid var(--border);
+    background: white;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font: inherit;
+    color: var(--ink);
+    min-width: 240px;
+  }
+  button.danger { background: var(--err); }
+  button.danger:hover { background: #8b001a; }
+
+  .rec-light {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--err); display: inline-block;
+    margin-right: 8px; vertical-align: middle;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .transcript {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    background: #fafbff;
+    border-radius: 10px;
+    min-height: 140px;
+    max-height: 320px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .transcript .interim { color: var(--soft); font-style: italic; }
+  .transcript:empty::before {
+    content: "Live transcript will appear here once you click Start…";
+    color: var(--soft);
+    font-style: italic;
+  }
+
+  .summary-block { margin-top: 14px; }
+  .summary-block .one-para {
+    background: #f3f5fa;
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin: 4px 0 10px;
+  }
+  .email-draft {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    padding: 12px 14px;
+    white-space: pre-wrap;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  /* skeleton placeholders for un-loaded sections */
+  .skeleton {
+    background: linear-gradient(90deg, #eef0f6 25%, #f7f8fb 37%, #eef0f6 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: 4px;
+    height: 14px;
+    margin: 6px 0;
+  }
+  .skeleton.short { width: 40%; }
+  .skeleton.long  { width: 90%; }
+  @keyframes shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Conference AI Assistant</h1>
+    <div class="sub">Business card → company brief — v0.2.0</div>
+  </div>
+  <div class="sub" id="apiHint"></div>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1. Upload card</h2>
+    <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose or take a photo of a business card">
+      <div id="dropText">Tap to choose or take a photo of a business card</div>
+    </div>
+    <input type="file" id="file" accept="image/*" capture="environment" hidden />
+    <div class="preview" id="preview"></div>
+    <button id="submit" disabled>
+      <span class="btn-spinner"></span>
+      <span id="submitLabel">Analyze card</span>
+    </button>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="panel" id="resultPanel" style="display:none;">
+    <h2>2. Result <span class="chip" id="statusChip">pending</span></h2>
+
+    <div class="progressbar" id="progressbar"><span></span></div>
+
+    <ol class="stages" id="stages">
+      <li class="stage" data-key="upload">
+        <span class="dot"></span>
+        <span class="label">Upload card</span>
+        <span class="meta" id="meta-upload"></span>
+      </li>
+      <li class="stage" data-key="extract">
+        <span class="dot"></span>
+        <span class="label">Read fields from card</span>
+        <span class="meta" id="meta-extract"></span>
+      </li>
+      <li class="stage" data-key="research">
+        <span class="dot"></span>
+        <span class="label">Research company</span>
+        <span class="meta" id="meta-research"></span>
+      </li>
+      <li class="stage" data-key="brief">
+        <span class="dot"></span>
+        <span class="label">Build pre-meeting brief</span>
+        <span class="meta" id="meta-brief"></span>
+      </li>
+    </ol>
+
+    <div id="result"></div>
+  </section>
+
+  <section class="panel full-row" id="convPanel">
+    <h2>3. Live conversation <span class="chip" id="convChip">idle</span></h2>
+
+    <div class="row">
+      <label class="grow" style="display:flex; align-items:center; gap:8px;">
+        <span style="color:var(--muted); font-size:13px;">Link to card:</span>
+        <select id="cardSelect">
+          <option value="">— None —</option>
+        </select>
+      </label>
+      <button id="startBtn">Start conversation</button>
+      <button id="stopBtn" class="danger" style="display:none;">
+        <span class="rec-light"></span><span>Stop</span>
+      </button>
+    </div>
+
+    <div class="status" id="convStatus"></div>
+
+    <div class="transcript" id="transcript"></div>
+
+    <div id="summary"></div>
+  </section>
+</main>
+
+<script>
+// Same-origin when served by FastAPI at /app/, else allow override.
+const API_BASE = (location.pathname.startsWith("/app") ? "" : "http://localhost:8000");
+document.getElementById("apiHint").textContent = API_BASE ? "API: " + API_BASE : "API: same origin";
+
+const fileInput = document.getElementById("file");
+const drop = document.getElementById("drop");
+const preview = document.getElementById("preview");
+const submitBtn = document.getElementById("submit");
+const submitLabel = document.getElementById("submitLabel");
+const statusEl = document.getElementById("status");
+const resultPanel = document.getElementById("resultPanel");
+const resultEl = document.getElementById("result");
+const chip = document.getElementById("statusChip");
+const stagesEl = document.getElementById("stages");
+const progressbar = document.getElementById("progressbar");
+function showProgress(on) { progressbar.classList.toggle("show", !!on); }
+
+let chosenFile = null;
+let stageStart = {};       // monotonic ms per stage key, for elapsed timers
+let elapsedTimer = null;   // setInterval handle
+
+// ---- helpers --------------------------------------------------------------
+
+function setStatus(msg, isErr=false) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("show", !!msg);
+  statusEl.classList.toggle("err", isErr);
+}
+
+function escapeHtml(s) {
+  return (s ?? "").toString().replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+
+function setBtnLoading(loading, label) {
+  submitBtn.classList.toggle("loading", !!loading);
+  submitBtn.disabled = !!loading;
+  if (label) submitLabel.textContent = label;
+}
+
+// ---- stages widget --------------------------------------------------------
+
+const STAGE_ORDER = ["upload", "extract", "research", "brief"];
+
+function stageEl(key) {
+  return stagesEl.querySelector(`.stage[data-key="${key}"]`);
+}
+function metaEl(key) { return document.getElementById(`meta-${key}`); }
+
+function setStage(key, state, metaText) {
+  const el = stageEl(key);
+  if (!el) return;
+  const wasActive = el.classList.contains("active");
+  el.classList.remove("active", "done", "failed");
+  if (state) el.classList.add(state);
+  if (state === "active") {
+    // Only set the start time on the first activation; subsequent polls
+    // re-call setStage("...", "active") and must NOT reset the timer.
+    if (!stageStart[key]) stageStart[key] = performance.now();
+    if (!wasActive) metaEl(key).textContent = metaText || "running…";
+  } else if (state === "done") {
+    const ms = stageStart[key] ? Math.round(performance.now() - stageStart[key]) : null;
+    metaEl(key).textContent = ms != null ? `${(ms/1000).toFixed(1)}s` : (metaText || "");
+  } else if (state === "failed") {
+    metaEl(key).textContent = metaText || "failed";
+  } else {
+    metaEl(key).textContent = "";
+  }
+}
+
+function resetStages() {
+  STAGE_ORDER.forEach(k => setStage(k, null));
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  stageStart = {};
+  tickerKey = null;
+}
+
+let tickerKey = null;
+function startElapsedTicker(activeKey) {
+  // Idempotent: if already ticking on this key, don't restart.
+  if (tickerKey === activeKey && elapsedTimer) return;
+  if (elapsedTimer) clearInterval(elapsedTimer);
+  tickerKey = activeKey;
+  const tick = () => {
+    const t = stageStart[activeKey];
+    if (!t) return;
+    const s = ((performance.now() - t) / 1000).toFixed(0);
+    metaEl(activeKey).textContent = `${s}s`;
+  };
+  tick();  // paint immediately so we don't wait a second for the first update
+  elapsedTimer = setInterval(tick, 1000);
+}
+
+// Map a backend status into the stages widget.
+function applyStatusToStages(status, hasExtracted, hasResearch, hasPdf) {
+  // upload is set elsewhere (right after POST returns).
+  switch (status) {
+    case "pending":
+    case "extracting":
+      setStage("extract", "active");
+      startElapsedTicker("extract");
+      break;
+    case "researching":
+      if (!stageEl("extract").classList.contains("done")) setStage("extract", "done");
+      setStage("research", "active");
+      startElapsedTicker("research");
+      break;
+    case "ready":
+      ["extract","research","brief"].forEach(k => setStage(k, "done"));
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+      break;
+    case "error":
+      // mark whichever step is currently active as failed
+      const cur = stagesEl.querySelector(".stage.active");
+      if (cur) setStage(cur.dataset.key, "failed");
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+      break;
+  }
+}
+
+// ---- file pickers ---------------------------------------------------------
+
+// The drop zone is a plain div now (not a <label>) to avoid the double-fire
+// case where the label's native input-trigger and our explicit fileInput.click()
+// both ran, opening the picker twice.
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+});
+
+["dragenter","dragover"].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); })
+);
+["dragleave","drop"].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); })
+);
+drop.addEventListener("drop", e => {
+  if (e.dataTransfer?.files?.[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", () => {
+  if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+});
+
+function handleFile(f) {
+  chosenFile = f;
+  const url = URL.createObjectURL(f);
+  preview.innerHTML = `<img src="${url}" alt="card preview" />`;
+  submitBtn.disabled = false;
+  document.getElementById("dropText").textContent = f.name;
+  setStatus("");
+  // Reset the input so picking the same file again still fires `change`.
+  fileInput.value = "";
+}
+
+// ---- submit + poll --------------------------------------------------------
+
+submitBtn.addEventListener("click", async () => {
+  if (!chosenFile) return;
+  setBtnLoading(true, "Uploading…");
+  setStatus("");
+  resultPanel.style.display = "";
+  showProgress(true);
+  chip.textContent = "uploading";
+  resetStages();
+  setStage("upload", "active");
+  renderSkeleton();
+
+  try {
+    const fd = new FormData();
+    fd.append("photo", chosenFile);
+    const res = await fetch(API_BASE + "/cards", { method: "POST", body: fd });
+    if (!res.ok) throw new Error("Upload failed: " + res.status + " " + (await res.text()));
+    const { id } = await res.json();
+    setStage("upload", "done");
+    chip.textContent = "pending";
+    setBtnLoading(true, "Analyzing…");
+    pollUntilReady(id);
+  } catch (err) {
+    showProgress(false);
+    setStatus(err.message || String(err), true);
+    setStage("upload", "failed", "upload failed");
+    setBtnLoading(false, "Analyze card");
+  }
+});
+
+async function pollUntilReady(id) {
+  // Up to ~6 minutes, polling every 2s.
+  for (let i = 0; i < 180; i++) {
+    await sleep(2000);
+    let data;
+    try {
+      const r = await fetch(API_BASE + "/cards/" + id);
+      if (!r.ok) throw new Error("status fetch failed: " + r.status);
+      data = await r.json();
+    } catch (err) {
+      setStatus("Lost connection while polling. Retrying…", true);
+      continue;
+    }
+    chip.textContent = data.status;
+    applyStatusToStages(data.status, !!data.extracted, !!data.research, !!data.pdf_url);
+    renderPartial(data);
+    if (data.status === "ready") {
+      showProgress(false);
+      setBtnLoading(false, "Analyze another");
+      setStatus("");
+      return;
+    }
+    if (data.status === "error") {
+      showProgress(false);
+      setStatus(data.error || "Pipeline failed.", true);
+      setBtnLoading(false, "Try again");
+      return;
+    }
+  }
+  showProgress(false);
+  setStatus("Timed out waiting for result.", true);
+  setBtnLoading(false, "Try again");
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ---- result rendering -----------------------------------------------------
+
+function renderField(label, value) {
+  if (value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) {
+    return `<div class="field"><b>${label}</b><span class="empty">—</span></div>`;
+  }
+  const text = Array.isArray(value) ? value.join(", ") : value;
+  return `<div class="field"><b>${label}</b><span>${escapeHtml(text)}</span></div>`;
+}
+
+function renderLinkField(label, url) {
+  if (!url) return `<div class="field"><b>${label}</b><span class="empty">—</span></div>`;
+  const href = normalizeUrl(url);
+  const safe = escapeHtml(url);
+  return `<div class="field"><b>${label}</b><span><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${safe}</a></span></div>`;
+}
+
+function normalizeUrl(u) {
+  // Cards often print "acme.example" without a scheme. Prepend https:// so
+  // the link actually opens.
+  if (!u) return u;
+  if (/^https?:\/\//i.test(u)) return u;
+  return "https://" + u.replace(/^\/+/, "");
+}
+
+function titleDisplay(cardTitle, verified) {
+  if (!verified) return cardTitle;
+  if (!cardTitle) return verified + " (verified)";
+  // Same string -> just show it once.
+  if (cardTitle.trim().toLowerCase() === verified.trim().toLowerCase()) return cardTitle;
+  return `${cardTitle} (verified: ${verified})`;
+}
+
+function renderBullets(items) {
+  if (!items || !items.length) return `<div class="empty">—</div>`;
+  return `<ul class="bullets">${items.map(i => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
+}
+
+function categoryClass(cat) {
+  switch ((cat || "").toLowerCase()) {
+    case "utility":               return "cat-utility";
+    case "vendor":                return "cat-vendor";
+    case "epc":                   return "cat-epc";
+    case "sales representatives": return "cat-sales";
+    case "distributors":          return "cat-distributor";
+    case "end users":             return "cat-enduser";
+    default:                      return "cat-other";
+  }
+}
+function renderCategory(cat, rationale) {
+  if (!cat) return "";
+  return `
+    <div style="margin: 6px 0 10px;">
+      <span class="cat-chip ${categoryClass(cat)}">${escapeHtml(cat)}</span>
+      ${rationale ? `<div class="cat-rationale">${escapeHtml(rationale)}</div>` : ""}
+    </div>`;
+}
+
+function renderSkeleton() {
+  resultEl.innerHTML = `
+    <h3 style="margin-top:8px;">Contact</h3>
+    <div class="skeleton long"></div>
+    <div class="skeleton short"></div>
+    <div class="skeleton long"></div>
+    <h3 style="margin-top:14px;">Company brief</h3>
+    <div class="skeleton long"></div>
+    <div class="skeleton long"></div>
+    <div class="skeleton short"></div>
+  `;
+}
+
+function renderPartial(data) {
+  const ex = data.extracted || {};
+  const r = data.research || {};
+  const showResearch = data.research || data.status === "researching" || data.status === "ready";
+
+  resultEl.innerHTML = `
+    <div class="meta-line">id ${escapeHtml(data.id)} · created ${escapeHtml(data.created_at)}</div>
+
+    <h3 style="margin-top:14px;">Contact</h3>
+    ${data.extracted ? `
+      ${renderField("Name", ex.name)}
+      ${renderField("Title", titleDisplay(ex.title, r.contact_title_verified))}
+      ${renderField("Company", ex.company)}
+      ${renderField("Emails", ex.emails)}
+      ${renderField("Phones", ex.phones)}
+      ${renderLinkField("Website", r.company_website || ex.website)}
+      ${renderField("Address", ex.address)}
+      ${renderLinkField("LinkedIn", r.contact_linkedin || ex.linkedin)}
+      ${ex.notes ? renderField("Notes", ex.notes) : ""}
+    ` : `<div class="skeleton long"></div><div class="skeleton short"></div><div class="skeleton long"></div>`}
+
+    <h3 style="margin-top:14px;">Company brief</h3>
+    ${data.research ? `
+      ${renderCategory(r.company_category, r.category_rationale)}
+      ${renderField("One-liner", r.one_liner)}
+      ${renderField("Industry", r.industry)}
+      ${renderField("Size", r.estimated_size)}
+      ${renderField("Products", r.products)}
+
+      <h3 style="margin-top:14px;">Recent news</h3>
+      ${renderBullets(r.recent_news)}
+
+      <h3 style="margin-top:14px;">Likely pain points</h3>
+      ${renderBullets(r.pain_points)}
+
+      <h3 style="margin-top:14px;">Suggested opening questions</h3>
+      ${renderBullets(r.opening_questions)}
+
+      ${r.sources && r.sources.length ? `
+        <h3 style="margin-top:14px;">Sources</h3>
+        ${renderBullets(r.sources)}
+      ` : ""}
+    ` : `<div class="skeleton long"></div><div class="skeleton long"></div><div class="skeleton short"></div>`}
+
+    ${data.pdf_url ? `
+      <div class="pdf-row">
+        <a href="${API_BASE}${data.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
+        <a href="${API_BASE}${data.pdf_url}" download><button>Download PDF</button></a>
+      </div>` : ""}
+
+    ${data.error ? `<details open><summary>Error details</summary><pre>${escapeHtml(data.error)}</pre></details>` : ""}
+  `;
+}
+
+// ===========================================================================
+// Slice 2: Live conversation (MediaRecorder + server-side Whisper + Claude)
+// ===========================================================================
+
+const cardSelect = document.getElementById("cardSelect");
+const startBtn = document.getElementById("startBtn");
+const stopBtn  = document.getElementById("stopBtn");
+const convChip = document.getElementById("convChip");
+const convStatus = document.getElementById("convStatus");
+const transcriptEl = document.getElementById("transcript");
+const summaryEl = document.getElementById("summary");
+
+let mediaRecorder = null;
+let mediaStream = null;
+let audioChunks = [];
+let convId = null;
+let recStartMs = 0;
+let recTimer = null;
+
+function setConvStatus(msg, isErr=false) {
+  convStatus.textContent = msg || "";
+  convStatus.classList.toggle("show", !!msg);
+  convStatus.classList.toggle("err", isErr);
+}
+
+function fmtTime(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function paintTimer() {
+  const elapsed = Date.now() - recStartMs;
+  transcriptEl.innerHTML = `
+    <div style="text-align:center; padding:18px 0;">
+      <div style="font-size:36px; font-weight:600; color:var(--accent-2); letter-spacing:.04em;">
+        ${fmtTime(elapsed)}
+      </div>
+      <div style="color:var(--muted); margin-top:6px;">
+        Recording — click <b>Stop</b> when done.<br/>
+        <span style="font-size:12px;">Audio is sent to Whisper for transcription on Stop.</span>
+      </div>
+    </div>`;
+}
+
+async function loadCards() {
+  try {
+    const r = await fetch(API_BASE + "/cards");
+    if (!r.ok) return;
+    const cards = await r.json();
+    const current = cardSelect.value;
+    cardSelect.innerHTML = `<option value="">— None —</option>` +
+      cards.map(c => {
+        const label = `${c.name || "(unknown)"} · ${c.company || "—"} (${c.id})`;
+        return `<option value="${escapeHtml(c.id)}">${escapeHtml(label)}</option>`;
+      }).join("");
+    if (current) cardSelect.value = current;
+  } catch (_) { /* non-fatal */ }
+}
+loadCards();
+// Re-pull cards after a successful card analysis so the dropdown stays fresh.
+const _origPollUntilReady = pollUntilReady;
+pollUntilReady = async function(id) {
+  await _origPollUntilReady(id);
+  loadCards();
+};
+
+function pickRecorderMime() {
+  // Prefer formats Whisper handles natively. Browsers will typically support
+  // one of these; fall back to the browser default (Safari often returns
+  // audio/mp4, Chromium audio/webm;codecs=opus).
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/aac",
+    "audio/ogg;codecs=opus",
+  ];
+  if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) {
+    return undefined;
+  }
+  for (const m of candidates) {
+    try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (_) {}
+  }
+  return undefined;
+}
+
+function suffixForMime(mime) {
+  const m = (mime || "").toLowerCase();
+  if (m.includes("mp4") || m.includes("aac") || m.includes("m4a")) return ".mp4";
+  if (m.includes("ogg")) return ".ogg";
+  if (m.includes("wav")) return ".wav";
+  if (m.includes("mpeg") || m.includes("mp3")) return ".mp3";
+  return ".webm";
+}
+
+async function startRecording() {
+  if (typeof MediaRecorder === "undefined") {
+    setConvStatus("This browser doesn't support audio recording.", true);
+    return false;
+  }
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    setConvStatus("Microphone access denied: " + (err && err.message || err), true);
+    return false;
+  }
+  audioChunks = [];
+  const mime = pickRecorderMime();
+  try {
+    mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime })
+                         : new MediaRecorder(mediaStream);
+  } catch (err) {
+    setConvStatus("Could not start recorder: " + err.message, true);
+    return false;
+  }
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) audioChunks.push(e.data); };
+  // Request a chunk every second so we don't lose audio if the tab is closed mid-call.
+  mediaRecorder.start(1000);
+
+  recStartMs = Date.now();
+  paintTimer();
+  recTimer = setInterval(paintTimer, 500);
+  return true;
+}
+
+function stopRecording() {
+  return new Promise((resolve) => {
+    if (!mediaRecorder) return resolve(null);
+    const onStop = () => {
+      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+      const mime = mediaRecorder.mimeType || "audio/webm";
+      const blob = new Blob(audioChunks, { type: mime });
+      if (recTimer) { clearInterval(recTimer); recTimer = null; }
+      resolve(blob);
+    };
+    mediaRecorder.addEventListener("stop", onStop, { once: true });
+    try { mediaRecorder.stop(); } catch (_) { onStop(); }
+  });
+}
+
+startBtn.addEventListener("click", async () => {
+  transcriptEl.innerHTML = "";
+  summaryEl.innerHTML = "";
+  setConvStatus("");
+
+  // Start backend session first so we have an ID to attach.
+  try {
+    const cardId = cardSelect.value || null;
+    const res = await fetch(API_BASE + "/conversations", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ card_id: cardId }),
+    });
+    if (!res.ok) throw new Error("Could not start conversation: " + res.status);
+    const body = await res.json();
+    convId = body.id;
+  } catch (err) {
+    setConvStatus(err.message || String(err), true);
+    return;
+  }
+
+  const ok = await startRecording();
+  if (!ok) return;
+
+  convChip.textContent = "recording";
+  startBtn.style.display = "none";
+  stopBtn.style.display = "";
+  setConvStatus("Recording — speak normally. Click Stop when done.");
+});
+
+stopBtn.addEventListener("click", async () => {
+  convChip.textContent = "uploading";
+  stopBtn.style.display = "none";
+  startBtn.style.display = "";
+  setConvStatus("Stopping recording…");
+
+  const blob = await stopRecording();
+  transcriptEl.innerHTML = `<div style="text-align:center; padding:14px; color:var(--muted);">Audio captured (${blob ? (blob.size/1024/1024).toFixed(2) : "?"} MB). Sending to Whisper…</div>`;
+
+  if (!blob || blob.size === 0) {
+    setConvStatus("No audio captured. Was the mic muted?", true);
+    return;
+  }
+  if (!convId) {
+    setConvStatus("Lost conversation id. Click Start to begin a new one.", true);
+    return;
+  }
+
+  setConvStatus(`Uploading audio (${(blob.size/1024/1024).toFixed(2)} MB)…`);
+  const fd = new FormData();
+  const filename = "conversation" + suffixForMime(blob.type);
+  fd.append("audio", blob, filename);
+
+  try {
+    const res = await fetch(API_BASE + `/conversations/${convId}/audio`, {
+      method: "POST",
+      body: fd,
+    });
+    if (!res.ok) throw new Error("Upload failed: " + res.status + " " + (await res.text()));
+    setConvStatus("Audio uploaded. Transcribing with Whisper…");
+    pollConversation(convId);
+  } catch (err) {
+    convChip.textContent = "error";
+    setConvStatus(err.message || String(err), true);
+  }
+});
+
+async function pollConversation(id) {
+  // ~5 minutes — Whisper + Claude can take a bit on long calls.
+  let renderedTranscript = false;
+  for (let i = 0; i < 150; i++) {
+    await sleep(2000);
+    let data;
+    try {
+      const r = await fetch(API_BASE + "/conversations/" + id);
+      if (!r.ok) throw new Error("status fetch failed: " + r.status);
+      data = await r.json();
+    } catch (err) {
+      setConvStatus("Lost connection while polling. Retrying…", true);
+      continue;
+    }
+    convChip.textContent = data.status;
+
+    if (data.transcript && !renderedTranscript) {
+      transcriptEl.innerHTML = escapeHtml(data.transcript);
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      renderedTranscript = true;
+    }
+
+    if (data.status === "transcribing") {
+      setConvStatus("Transcribing audio with Whisper…");
+    } else if (data.status === "summarizing") {
+      setConvStatus("Summarizing with Claude…");
+    }
+
+    if (data.status === "ready") {
+      setConvStatus("");
+      if (data.transcript && !renderedTranscript) {
+        transcriptEl.innerHTML = escapeHtml(data.transcript);
+      }
+      renderSummary(data);
+      return;
+    }
+    if (data.status === "error") {
+      setConvStatus(data.error || "Pipeline failed.", true);
+      return;
+    }
+  }
+  setConvStatus("Timed out waiting for summary.", true);
+}
+
+function renderSummary(data) {
+  const s = data.summary || {};
+  summaryEl.innerHTML = `
+    <div class="summary-block">
+      <h3 style="margin-top:14px;">Summary</h3>
+      <div class="one-para">${escapeHtml(s.summary || "—")}</div>
+
+      <h3>Key topics</h3>
+      ${renderBullets(s.key_topics)}
+
+      <h3>Customer concerns</h3>
+      ${renderBullets(s.customer_concerns)}
+
+      <h3>Commitments</h3>
+      ${renderBullets(s.commitments)}
+
+      <h3>Next steps</h3>
+      ${renderBullets(s.next_steps)}
+
+      ${s.follow_up_email ? `
+        <h3>Draft follow-up email</h3>
+        <div class="email-draft">${escapeHtml(s.follow_up_email)}</div>
+        <div style="margin-top:8px;">
+          <button class="secondary" id="copyEmailBtn">Copy email to clipboard</button>
+        </div>
+      ` : ""}
+
+      ${data.pdf_url ? `
+        <div class="pdf-row" style="margin-top:14px;">
+          <a href="${API_BASE}${data.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
+          <a href="${API_BASE}${data.pdf_url}" download><button>Download PDF</button></a>
+        </div>` : ""}
+    </div>
+  `;
+  const copyBtn = document.getElementById("copyEmailBtn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(s.follow_up_email); copyBtn.textContent = "Copied"; }
+      catch { copyBtn.textContent = "Copy failed — select & copy manually"; }
+    });
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# Don't ship local virtualenvs, caches, or local-only data into the image.
+backend/.venv/
+backend/data/
+backend/__pycache__/
+backend/app/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local secrets — should never make it into a Docker image.
+.env
+backend/.env
+**/.env
+
+# Build artifacts and editor cruft.
+.git/
+.gitignore
+.DS_Store
+*.swp
+*.log
+node_modules/
+
+# Tests / dev outputs we don't ship.
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/

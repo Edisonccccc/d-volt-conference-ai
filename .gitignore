@@ -1,0 +1,38 @@
+# Top-level safety net. Never commit secrets, virtualenvs, or local data.
+
+# Real secrets — only the .example template should be committed.
+.env
+**/.env
+backend/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local persistent data — uploads, audio, generated PDFs, SQLite db.
+backend/data/
+data/
+
+# OS & editor cruft.
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Build / dist artifacts (mostly relevant for Phase 2 Capacitor scaffold).
+node_modules/
+dist/
+build/
+ios/App/Pods/
+ios/App/build/
+android/app/build/
