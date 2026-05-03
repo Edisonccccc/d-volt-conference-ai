@@ -145,6 +145,21 @@ Rules:
 - For `next_steps`, be specific and actionable: include who, what, by when.
 - The follow-up email should reference at least two specific points from
   the conversation so it feels personal.
+
+Customer-context rules (apply when the customer context block above is not
+empty):
+- The follow-up email MUST address the contact by name (e.g. "Hi Daniel,")
+  and reference their company by name when those values are present in the
+  customer context. Do not use generic placeholders like "Hi there" if a
+  name is available.
+- Tailor the email to the company category. A pitch to a Utility reads
+  differently from one to an EPC, a Distributor, an End User, or a Vendor.
+  Mention reliability/grid impact for utilities; deployment timelines for
+  EPCs; margins/inventory for distributors; downtime/cost-per-hour for end
+  users.
+- If the customer said anything that matches a pre-call pain point, call
+  that connection out explicitly in either `next_steps` or the email body
+  — it shows the seller did their homework and earns trust.
 """
 
 
