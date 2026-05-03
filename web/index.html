@@ -45,6 +45,72 @@
     gap: 20px;
   }
   @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+
+  /* ====================================================================
+     Phone-friendly tweaks (≤640px). Goals: tighter padding so content
+     gets the full width, 44pt+ tap targets, stacked field rows, full-
+     width form controls, no horizontal scrolling, sane transcript size.
+     ==================================================================== */
+  @media (max-width: 640px) {
+    body { font-size: 15px; }
+    header { padding: 14px 14px; flex-wrap: wrap; }
+    header h1 { font-size: 17px; }
+    header .sub { font-size: 12px; }
+    #apiHint { display: none; }              /* debug-only on desktop */
+
+    main {
+      margin: 12px auto;
+      padding: 0 12px;
+      gap: 12px;
+    }
+    .panel { padding: 14px; border-radius: 10px; }
+    .panel h2 { font-size: 13px; }
+
+    .drop { padding: 22px 12px; }            /* less wasteful on small screens */
+    button { min-height: 44px; padding: 12px 14px; }   /* Apple HIG tap target */
+
+    /* Stack the Contact/Brief field rows so 110px label doesn't crowd values. */
+    .field {
+      grid-template-columns: 1fr;
+      gap: 2px;
+      padding: 6px 0;
+    }
+    .field b { font-size: 12px; color: var(--muted); }
+
+    /* Form controls: fill available width inside .row, drop the 240px min-width.
+       The card selector lives inside a flex <label>, so we make the inner
+       select flex-grow too — otherwise "Link to card:" + select would stay
+       at intrinsic widths and not fill the row. */
+    .row { gap: 8px; }
+    .row .grow { width: 100%; flex-basis: 100%; }
+    .row .grow select { flex: 1 1 0; min-width: 0; }
+    select, input[type="text"] {
+      width: 100%;
+      min-width: 0;
+      padding: 12px 12px;
+    }
+
+    /* Live transcript: keep within viewport so user can still see Stop button. */
+    .transcript { max-height: 220px; min-height: 120px; padding: 10px; }
+
+    /* Long verified-link URLs wrap instead of forcing horizontal scroll. */
+    .field a { word-break: break-all; }
+    .email-draft { word-break: break-word; }
+
+    /* PDF row: keep side-by-side but tighten gap. */
+    .pdf-row { gap: 8px; }
+
+    /* Stages widget: tighter padding, smaller meta text. */
+    .stage { padding: 8px 12px; }
+    .stage .meta { font-size: 11px; }
+  }
+
+  /* Very small phones (e.g. iPhone SE in portrait). Just trim a bit more. */
+  @media (max-width: 380px) {
+    .panel { padding: 12px; }
+    .drop { padding: 18px 10px; }
+    header h1 { font-size: 16px; }
+  }
   .panel {
     background: var(--card);
     border: 1px solid var(--border);
