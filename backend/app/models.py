@@ -1,9 +1,9 @@
-"""Pydantic models for card extraction and company research."""
+"""Pydantic models for card extraction, conversation, and users."""
 
 from __future__ import annotations
 
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class ExtractedCard(BaseModel):
@@ -89,6 +89,7 @@ class CardRecord(BaseModel):
     extracted: Optional[ExtractedCard] = None
     research: Optional[CompanyResearch] = None
     error: Optional[str] = None
+    user_id: Optional[str] = None  # owner; nullable on legacy rows
 
 
 # ---------------------------------------------------------------------------
@@ -153,3 +154,38 @@ class ConversationRecord(BaseModel):
     transcript: Optional[str] = None
     summary: Optional[ConversationSummary] = None
     error: Optional[str] = None
+    user_id: Optional[str] = None  # owner; nullable on legacy rows
+
+
+# ---------------------------------------------------------------------------
+# Users (slice 3)
+# ---------------------------------------------------------------------------
+
+UserRole = Literal["rep", "manager"]
+
+
+class User(BaseModel):
+    """User as exposed to the API (no password_hash)."""
+
+    id: str
+    email: EmailStr
+    name: Optional[str] = None
+    role: UserRole = "rep"
+    created_at: str
+    last_login: Optional[str] = None
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=200)
+    name: Optional[str] = Field(None, max_length=120)
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: User

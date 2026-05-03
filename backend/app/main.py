@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,10 +18,29 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 from . import storage  # noqa: E402  (intentional: load_dotenv first)
+from .auth import (
+    email_allowed,
+    hash_password,
+    make_current_user_dep,
+    make_jwt,
+    require_manager,
+    verify_password,
+)
 from .conversation import summarize_conversation
+from .models import (
+    AuthResponse,
+    User,
+    UserCreate,
+    UserLogin,
+)
 from .pdf_report import render_conversation_report
 from .pipeline import run_pipeline
 from .transcribe import transcribe_audio
+
+
+# Build the FastAPI dependency that returns the current User. We inject the
+# storage lookup here to avoid a circular import inside auth.py.
+current_user = make_current_user_dep(storage.get_user_by_id)
 
 
 logging.basicConfig(
@@ -105,10 +124,16 @@ ALLOWED_IMAGE_TYPES = {
 }
 
 
+def _scope_for(user: User) -> Optional[str]:
+    """Managers see everyone (None scope); reps see only their own user_id."""
+    return None if user.role == "manager" else user.id
+
+
 @app.post("/cards")
 async def create_card_endpoint(
     background_tasks: BackgroundTasks,
     photo: UploadFile = File(...),
+    user: User = Depends(current_user),
 ) -> dict:
     if photo.content_type not in ALLOWED_IMAGE_TYPES and not (
         photo.content_type and photo.content_type.startswith("image/")
@@ -127,15 +152,15 @@ async def create_card_endpoint(
     contents = await photo.read()
     out.write_bytes(contents)
 
-    storage.create_card(card_id, str(out))
+    storage.create_card(card_id, str(out), user_id=user.id)
     background_tasks.add_task(run_pipeline, card_id)
 
     return {"id": card_id, "status": "pending"}
 
 
 @app.get("/cards/{card_id}")
-def get_card_endpoint(card_id: str) -> dict:
-    record = storage.get_card(card_id)
+def get_card_endpoint(card_id: str, user: User = Depends(current_user)) -> dict:
+    record = storage.get_card(card_id, user_id=_scope_for(user))
     if record is None:
         raise HTTPException(status_code=404, detail="Card not found")
 
@@ -148,7 +173,11 @@ def get_card_endpoint(card_id: str) -> dict:
 
 
 @app.get("/cards/{card_id}/report.pdf")
-def get_report_pdf(card_id: str):
+def get_report_pdf(card_id: str, user: User = Depends(current_user)):
+    # Auth-scope first so a rep can't download another rep's PDF by guessing the id.
+    record = storage.get_card(card_id, user_id=_scope_for(user))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Not found")
     pdf_path = storage.report_dir() / f"{card_id}.pdf"
     if not pdf_path.is_file():
         raise HTTPException(status_code=404, detail="Report not ready")
@@ -160,8 +189,8 @@ def get_report_pdf(card_id: str):
 
 
 @app.get("/cards/{card_id}/photo")
-def get_photo(card_id: str):
-    record = storage.get_card(card_id)
+def get_photo(card_id: str, user: User = Depends(current_user)):
+    record = storage.get_card(card_id, user_id=_scope_for(user))
     if record is None:
         raise HTTPException(status_code=404, detail="Card not found")
     p = Path(record.photo_path)
@@ -171,12 +200,11 @@ def get_photo(card_id: str):
 
 
 @app.post("/cards/{card_id}/email")
-def email_report(card_id: str, payload: dict) -> JSONResponse:
-    """Stub: returns the would-be email contents without sending.
-
-    Plug in SES/SendGrid here when you're ready. Body shape: {"to": "..."}.
-    """
-    record = storage.get_card(card_id)
+def email_report(
+    card_id: str, payload: dict, user: User = Depends(current_user)
+) -> JSONResponse:
+    """Stub: returns the would-be email contents without sending."""
+    record = storage.get_card(card_id, user_id=_scope_for(user))
     if record is None:
         raise HTTPException(status_code=404, detail="Card not found")
     if record.status != "ready":
@@ -204,7 +232,9 @@ def email_report(card_id: str, payload: dict) -> JSONResponse:
 
 
 @app.get("/cards")
-def list_cards_endpoint(limit: int = 25) -> list[dict]:
+def list_cards_endpoint(
+    limit: int = 25, user: User = Depends(current_user)
+) -> list[dict]:
     return [
         {
             "id": r.id,
@@ -212,8 +242,9 @@ def list_cards_endpoint(limit: int = 25) -> list[dict]:
             "created_at": r.created_at,
             "name": r.extracted.name if r.extracted else None,
             "company": r.extracted.company if r.extracted else None,
+            "user_id": r.user_id,
         }
-        for r in storage.list_cards(limit=limit)
+        for r in storage.list_cards(limit=limit, user_id=_scope_for(user))
     ]
 
 
@@ -223,14 +254,17 @@ def list_cards_endpoint(limit: int = 25) -> list[dict]:
 
 
 @app.post("/conversations")
-def create_conversation_endpoint(payload: Optional[dict] = None) -> dict:
+def create_conversation_endpoint(
+    payload: Optional[dict] = None, user: User = Depends(current_user),
+) -> dict:
     """Start a new conversation. Body: {"card_id": optional str}."""
     card_id = (payload or {}).get("card_id")
     if card_id:
-        if storage.get_card(card_id) is None:
+        # Reps can only link their own cards. Managers can link any card.
+        if storage.get_card(card_id, user_id=_scope_for(user)) is None:
             raise HTTPException(status_code=404, detail=f"Card {card_id} not found")
     conv_id = uuid.uuid4().hex[:12]
-    rec = storage.create_conversation(conv_id, card_id=card_id)
+    rec = storage.create_conversation(conv_id, card_id=card_id, user_id=user.id)
     return rec.model_dump()
 
 
@@ -284,10 +318,13 @@ def _run_audio_pipeline(conv_id: str) -> None:
 
 @app.post("/conversations/{conv_id}/finish")
 def finish_conversation(
-    conv_id: str, payload: dict, background_tasks: BackgroundTasks
+    conv_id: str,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
 ) -> dict:
     """Submit a text transcript directly (browser-side STT path)."""
-    rec = storage.get_conversation(conv_id)
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
     if rec is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     transcript = (payload or {}).get("transcript", "")
@@ -307,9 +344,10 @@ async def upload_conversation_audio(
     conv_id: str,
     background_tasks: BackgroundTasks,
     audio: UploadFile = File(...),
+    user: User = Depends(current_user),
 ) -> dict:
     """Upload the recorded audio blob, then trigger transcribe -> summarize."""
-    rec = storage.get_conversation(conv_id)
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
     if rec is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -347,8 +385,10 @@ async def upload_conversation_audio(
 
 
 @app.get("/conversations/{conv_id}")
-def get_conversation_endpoint(conv_id: str) -> dict:
-    rec = storage.get_conversation(conv_id)
+def get_conversation_endpoint(
+    conv_id: str, user: User = Depends(current_user),
+) -> dict:
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
     if rec is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     payload = rec.model_dump()
@@ -358,7 +398,10 @@ def get_conversation_endpoint(conv_id: str) -> dict:
 
 
 @app.get("/conversations/{conv_id}/report.pdf")
-def conversation_report_pdf(conv_id: str):
+def conversation_report_pdf(conv_id: str, user: User = Depends(current_user)):
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Not found")
     pdf_path = storage.report_dir() / f"conv-{conv_id}.pdf"
     if not pdf_path.is_file():
         raise HTTPException(status_code=404, detail="Report not ready")
@@ -370,9 +413,13 @@ def conversation_report_pdf(conv_id: str):
 
 
 @app.get("/conversations")
-def list_conversations_endpoint(limit: int = 25) -> list[dict]:
+def list_conversations_endpoint(
+    limit: int = 25, user: User = Depends(current_user),
+) -> list[dict]:
     out = []
-    for r in storage.list_conversations(limit=limit):
+    for r in storage.list_conversations(limit=limit, user_id=_scope_for(user)):
+        # When manager views team-wide, look up the card without scope so the
+        # customer name resolves even for cards belonging to other reps.
         card = storage.get_card(r.card_id) if r.card_id else None
         out.append({
             "id": r.id,
@@ -380,7 +427,78 @@ def list_conversations_endpoint(limit: int = 25) -> list[dict]:
             "started_at": r.started_at,
             "ended_at": r.ended_at,
             "card_id": r.card_id,
+            "user_id": r.user_id,
             "customer_name": card.extracted.name if card and card.extracted else None,
             "customer_company": card.extracted.company if card and card.extracted else None,
         })
     return out
+
+
+# ===========================================================================
+# Auth + admin endpoints (slice 3)
+# ===========================================================================
+
+
+@app.post("/auth/register", response_model=AuthResponse)
+def register(payload: UserCreate) -> AuthResponse:
+    """Self-serve registration. Email domain must be on EMAIL_ALLOWLIST."""
+    if not email_allowed(payload.email):
+        raise HTTPException(
+            status_code=403,
+            detail="Email domain not allowed for self-serve signup. "
+                   "Ask your admin to invite you.",
+        )
+    if storage.get_user_by_email_with_hash(payload.email) is not None:
+        raise HTTPException(status_code=409, detail="An account with that email already exists.")
+
+    # First user becomes manager automatically (so you, as the first rep
+    # to sign up after deploy, get team-wide access without manual SQL).
+    role = "manager" if storage.count_users() == 0 else "rep"
+    pw_hash = hash_password(payload.password)
+    user = storage.create_user(
+        email=str(payload.email),
+        password_hash=pw_hash,
+        name=payload.name,
+        role=role,
+    )
+    return AuthResponse(token=make_jwt(user.id), user=user)
+
+
+@app.post("/auth/login", response_model=AuthResponse)
+def login(payload: UserLogin) -> AuthResponse:
+    found = storage.get_user_by_email_with_hash(payload.email)
+    if found is None:
+        # Same error as wrong password to avoid email-enumeration.
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    user, pw_hash = found
+    if not verify_password(payload.password, pw_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    storage.update_last_login(user.id)
+    return AuthResponse(token=make_jwt(user.id), user=user)
+
+
+@app.get("/auth/me", response_model=User)
+def auth_me(user: User = Depends(current_user)) -> User:
+    return user
+
+
+@app.post("/auth/logout")
+def logout(user: User = Depends(current_user)) -> dict:
+    """Stateless JWT — server has nothing to do. Client just drops the token."""
+    return {"ok": True}
+
+
+@app.get("/admin/users", response_model=list[User])
+def admin_list_users(user: User = Depends(current_user)) -> list[User]:
+    require_manager(user)
+    return storage.list_users(limit=500)
+
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: str, user: User = Depends(current_user)) -> dict:
+    require_manager(user)
+    if user_id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself.")
+    if not storage.delete_user(user_id):
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"ok": True}

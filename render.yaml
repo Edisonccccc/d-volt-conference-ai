@@ -36,6 +36,12 @@ services:
         value: whisper-1
       - key: COMPANY_CONTEXT
         sync: false
+      - key: JWT_SECRET            # set to a 32-byte hex string in dashboard
+        sync: false
+      - key: EMAIL_ALLOWLIST       # e.g. "d-volt.co"
+        sync: false
+      - key: JWT_EXPIRY_DAYS
+        value: "7"
       - key: DATA_DIR
         value: /data
       - key: LOG_LEVEL

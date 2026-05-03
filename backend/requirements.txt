@@ -3,7 +3,11 @@ uvicorn[standard]==0.32.0
 python-multipart==0.0.12
 anthropic>=0.40
 openai>=1.50
-pydantic==2.9.2
+pydantic[email]==2.9.2
 reportlab==4.2.5
 Pillow==11.0.0
 python-dotenv==1.0.1
+
+# Auth (slice 3)
+argon2-cffi==23.1.0
+python-jose[cryptography]==3.3.0

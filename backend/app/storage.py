@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import uuid
+
 from .models import (
     CardRecord,
     CardStatus,
@@ -21,6 +23,8 @@ from .models import (
     ConversationStatus,
     ConversationSummary,
     ExtractedCard,
+    User,
+    UserRole,
 )
 
 
@@ -56,7 +60,8 @@ def init_db() -> None:
                 photo_path TEXT NOT NULL,
                 extracted_json TEXT,
                 research_json TEXT,
-                error TEXT
+                error TEXT,
+                user_id TEXT
             )
             """
         )
@@ -71,17 +76,50 @@ def init_db() -> None:
                 audio_path TEXT,
                 transcript TEXT,
                 summary_json TEXT,
-                error TEXT
+                error TEXT,
+                user_id TEXT
             )
             """
         )
-        # Migration: add audio_path to existing dbs that predate slice 2.5.
-        existing_cols = {
-            r["name"]
-            for r in conn.execute("PRAGMA table_info(conversations)").fetchall()
-        }
-        if "audio_path" not in existing_cols:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                password_hash TEXT NOT NULL,
+                name TEXT,
+                role TEXT NOT NULL DEFAULT 'rep',
+                created_at TEXT NOT NULL,
+                last_login TEXT
+            )
+            """
+        )
+
+        # ---- migrations: add columns to older DBs ----
+        def _has_col(table: str, col: str) -> bool:
+            return col in {
+                r["name"]
+                for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+
+        if not _has_col("conversations", "audio_path"):
             conn.execute("ALTER TABLE conversations ADD COLUMN audio_path TEXT")
+        if not _has_col("cards", "user_id"):
+            conn.execute("ALTER TABLE cards ADD COLUMN user_id TEXT")
+        if not _has_col("conversations", "user_id"):
+            conn.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT")
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
+
+        # One-time wipe of legacy test data (rows with no owner). After auth
+        # is in place every new row has user_id set, so subsequent runs are
+        # no-ops. Setting KEEP_LEGACY_DATA=1 skips this for callers who'd
+        # rather assign-then-keep.
+        if os.getenv("KEEP_LEGACY_DATA") not in ("1", "true", "yes"):
+            conn.execute("DELETE FROM cards         WHERE user_id IS NULL")
+            conn.execute("DELETE FROM conversations WHERE user_id IS NULL")
+
         conn.commit()
 
 
@@ -96,6 +134,7 @@ def report_dir() -> Path:
 
 
 def _row_to_record(row: sqlite3.Row) -> CardRecord:
+    user_id = row["user_id"] if "user_id" in row.keys() else None
     return CardRecord(
         id=row["id"],
         status=row["status"],
@@ -108,19 +147,22 @@ def _row_to_record(row: sqlite3.Row) -> CardRecord:
         if row["research_json"]
         else None,
         error=row["error"],
+        user_id=user_id,
     )
 
 
-def create_card(card_id: str, photo_path: str) -> CardRecord:
+def create_card(card_id: str, photo_path: str, user_id: Optional[str] = None) -> CardRecord:
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connect() as conn:
         conn.execute(
-            "INSERT INTO cards (id, status, created_at, photo_path) VALUES (?, ?, ?, ?)",
-            (card_id, "pending", now, photo_path),
+            "INSERT INTO cards (id, status, created_at, photo_path, user_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (card_id, "pending", now, photo_path, user_id),
         )
         conn.commit()
     return CardRecord(
-        id=card_id, status="pending", created_at=now, photo_path=photo_path
+        id=card_id, status="pending", created_at=now, photo_path=photo_path,
+        user_id=user_id,
     )
 
 
@@ -151,17 +193,32 @@ def update_research(card_id: str, research: CompanyResearch) -> None:
         conn.commit()
 
 
-def get_card(card_id: str) -> Optional[CardRecord]:
+def get_card(card_id: str, user_id: Optional[str] = None) -> Optional[CardRecord]:
+    """Fetch one card. If user_id is provided, the card must belong to that
+    user. Pass user_id=None for unscoped access (used by manager/admin).
+    """
     with _lock, _connect() as conn:
-        row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+        if user_id is None:
+            row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM cards WHERE id = ? AND user_id = ?",
+                (card_id, user_id),
+            ).fetchone()
     return _row_to_record(row) if row else None
 
 
-def list_cards(limit: int = 50) -> List[CardRecord]:
+def list_cards(limit: int = 50, user_id: Optional[str] = None) -> List[CardRecord]:
     with _lock, _connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM cards ORDER BY created_at DESC LIMIT ?", (limit,)
-        ).fetchall()
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT * FROM cards ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM cards WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
     return [_row_to_record(r) for r in rows]
 
 
@@ -171,9 +228,9 @@ def list_cards(limit: int = 50) -> List[CardRecord]:
 
 
 def _row_to_conversation(row: sqlite3.Row) -> ConversationRecord:
-    # row["audio_path"] is fetched safely even on freshly-migrated old rows
-    # because sqlite3.Row supports keys() lookup.
-    audio_path = row["audio_path"] if "audio_path" in row.keys() else None
+    keys = row.keys()
+    audio_path = row["audio_path"] if "audio_path" in keys else None
+    user_id = row["user_id"] if "user_id" in keys else None
     return ConversationRecord(
         id=row["id"],
         status=row["status"],
@@ -186,22 +243,24 @@ def _row_to_conversation(row: sqlite3.Row) -> ConversationRecord:
         if row["summary_json"]
         else None,
         error=row["error"],
+        user_id=user_id,
     )
 
 
 def create_conversation(
-    conv_id: str, card_id: Optional[str] = None
+    conv_id: str, card_id: Optional[str] = None, user_id: Optional[str] = None,
 ) -> ConversationRecord:
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connect() as conn:
         conn.execute(
-            "INSERT INTO conversations (id, status, started_at, card_id) "
-            "VALUES (?, ?, ?, ?)",
-            (conv_id, "recording", now, card_id),
+            "INSERT INTO conversations (id, status, started_at, card_id, user_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (conv_id, "recording", now, card_id, user_id),
         )
         conn.commit()
     return ConversationRecord(
-        id=conv_id, status="recording", started_at=now, card_id=card_id
+        id=conv_id, status="recording", started_at=now, card_id=card_id,
+        user_id=user_id,
     )
 
 
@@ -244,18 +303,122 @@ def update_conversation_summary(conv_id: str, summary: ConversationSummary) -> N
         conn.commit()
 
 
-def get_conversation(conv_id: str) -> Optional[ConversationRecord]:
+def get_conversation(
+    conv_id: str, user_id: Optional[str] = None
+) -> Optional[ConversationRecord]:
     with _lock, _connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM conversations WHERE id = ?", (conv_id,)
-        ).fetchone()
+        if user_id is None:
+            row = conn.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conv_id,)
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM conversations WHERE id = ? AND user_id = ?",
+                (conv_id, user_id),
+            ).fetchone()
     return _row_to_conversation(row) if row else None
 
 
-def list_conversations(limit: int = 50) -> List[ConversationRecord]:
+def list_conversations(
+    limit: int = 50, user_id: Optional[str] = None
+) -> List[ConversationRecord]:
+    with _lock, _connect() as conn:
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT * FROM conversations ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM conversations WHERE user_id = ? ORDER BY started_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+    return [_row_to_conversation(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# User CRUD
+# ---------------------------------------------------------------------------
+
+
+def _row_to_user(row: sqlite3.Row) -> User:
+    return User(
+        id=row["id"],
+        email=row["email"],
+        name=row["name"],
+        role=row["role"],
+        created_at=row["created_at"],
+        last_login=row["last_login"],
+    )
+
+
+def create_user(
+    email: str,
+    password_hash: str,
+    name: Optional[str] = None,
+    role: UserRole = "rep",
+) -> User:
+    user_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO users (id, email, password_hash, name, role, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, email.lower().strip(), password_hash, name, role, now),
+        )
+        conn.commit()
+    return User(
+        id=user_id, email=email, name=name, role=role,
+        created_at=now, last_login=None,
+    )
+
+
+def get_user_by_id(user_id: str) -> Optional[User]:
+    with _lock, _connect() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return _row_to_user(row) if row else None
+
+
+def get_user_by_email_with_hash(email: str):
+    """Return (user, password_hash) for login verification, or None.
+
+    The hash isn't on the User Pydantic model (so it can't accidentally
+    leak through API serialization), so we expose it via this auth-only
+    helper.
+    """
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE email = ?", (email.lower().strip(),),
+        ).fetchone()
+    if row is None:
+        return None
+    return _row_to_user(row), row["password_hash"]
+
+
+def update_last_login(user_id: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE users SET last_login = ? WHERE id = ?", (now, user_id),
+        )
+        conn.commit()
+
+
+def list_users(limit: int = 100) -> List[User]:
     with _lock, _connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM conversations ORDER BY started_at DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM users ORDER BY created_at ASC LIMIT ?", (limit,),
         ).fetchall()
-    return [_row_to_conversation(r) for r in rows]
+    return [_row_to_user(r) for r in rows]
+
+
+def delete_user(user_id: str) -> bool:
+    with _lock, _connect() as conn:
+        cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def count_users() -> int:
+    with _lock, _connect() as conn:
+        return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
