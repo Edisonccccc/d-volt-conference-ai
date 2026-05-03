@@ -130,16 +130,82 @@
   }
   header .sub { color: var(--muted); font-size: 13px; }
 
-  /* ----- main grid --------------------------------------------------- */
+  /* ----- tab bar ----------------------------------------------------- */
+  .tabs {
+    max-width: 1100px;
+    margin: 14px auto 0;
+    padding: 6px 8px;
+    display: inline-flex;
+    gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-xs);
+    position: sticky;
+    top: 70px;
+    z-index: 9;
+    width: max-content;
+  }
+  .tabs-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: center;
+  }
+  .tab {
+    background: transparent;
+    color: var(--muted);
+    padding: 9px 18px;
+    border-radius: var(--radius-pill);
+    width: auto;
+    margin: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: none;
+    border: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+    min-height: 0;
+  }
+  .tab:hover:not(.active) { background: var(--surface-2); color: var(--ink); }
+  .tab.active {
+    background: var(--ink);
+    color: var(--bg);
+  }
+  .tab .ico { width: 16px; height: 16px; }
+
+  /* recording indicator on the conversation tab when audio is being captured */
+  .tab .live-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--err);
+    margin-left: 2px;
+    animation: pulse 1.2s ease-in-out infinite;
+    display: none;
+  }
+  .tab.live .live-dot { display: inline-block; }
+
+  /* ----- main / tab content ------------------------------------------ */
   main {
     max-width: 1100px;
-    margin: 28px auto;
+    margin: 18px auto 28px;
     padding: 0 20px;
+  }
+  .tab-content[hidden] { display: none; }
+  .tab-content {
+    animation: fade-in 200ms ease-out;
+  }
+  .card-grid {
     display: grid;
     grid-template-columns: 380px 1fr;
     gap: 20px;
   }
-  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 880px) { .card-grid { grid-template-columns: 1fr; } }
 
   /* ----- panel (card) ------------------------------------------------ */
   .panel {
@@ -592,7 +658,10 @@
     header .sub { font-size: 12px; }
     #apiHint { display: none; }
 
-    main { margin: 14px auto; padding: 0 14px; gap: 12px; }
+    main { margin: 12px auto; padding: 0 14px; }
+    .card-grid { gap: 12px; }
+    .tabs { top: 56px; padding: 4px 6px; }
+    .tab { padding: 8px 14px; font-size: 13.5px; }
     .panel { padding: 16px; border-radius: 14px; }
     .panel h2 { font-size: 15px; }
 
@@ -647,7 +716,30 @@
   <div class="sub" id="apiHint"></div>
 </header>
 
+<div class="tabs-wrap">
+  <nav class="tabs" role="tablist" aria-label="App sections">
+    <button class="tab active" id="tab-card-btn" role="tab" aria-selected="true" data-tab="card">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="6" width="18" height="13" rx="2"/>
+        <path d="M3 10h18"/>
+      </svg>
+      <span>Card analysis</span>
+    </button>
+    <button class="tab" id="tab-conv-btn" role="tab" aria-selected="false" data-tab="conversation">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span>Conversation</span>
+      <span class="live-dot" aria-hidden="true"></span>
+    </button>
+  </nav>
+</div>
+
 <main>
+  <div class="tab-content" id="tab-card" role="tabpanel" aria-labelledby="tab-card-btn">
+  <div class="card-grid">
   <section class="panel">
     <h2><span class="step">1</span>Upload card</h2>
     <div class="drop" id="drop" role="button" tabindex="0" aria-label="Take a photo of a business card">
@@ -719,9 +811,12 @@
 
     <div id="result"></div>
   </section>
+  </div><!-- /.card-grid -->
+  </div><!-- /#tab-card -->
 
-  <section class="panel full-row" id="convPanel">
-    <h2><span class="step">3</span>Live conversation<span class="chip" id="convChip">idle</span></h2>
+  <div class="tab-content" id="tab-conversation" role="tabpanel" aria-labelledby="tab-conv-btn" hidden>
+  <section class="panel" id="convPanel">
+    <h2><span class="step">1</span>Live conversation<span class="chip" id="convChip">idle</span></h2>
 
     <div class="row">
       <label class="grow" style="display:flex; align-items:center; gap:8px;">
@@ -755,12 +850,55 @@
 
     <div id="summary"></div>
   </section>
+  </div><!-- /#tab-conversation -->
 </main>
 
 <script>
 // Same-origin when served by FastAPI at /app/, else allow override.
 const API_BASE = (location.pathname.startsWith("/app") ? "" : "http://localhost:8000");
 document.getElementById("apiHint").textContent = API_BASE ? "API: " + API_BASE : "API: same origin";
+
+// ---- tab switching --------------------------------------------------------
+// In-app tabs (not browser tabs). Switching here is just CSS visibility, so
+// active recording / polling continues regardless of which tab is on screen.
+const TAB_BTNS = {
+  card:         document.getElementById("tab-card-btn"),
+  conversation: document.getElementById("tab-conv-btn"),
+};
+const TAB_PANES = {
+  card:         document.getElementById("tab-card"),
+  conversation: document.getElementById("tab-conversation"),
+};
+
+function setActiveTab(name, { fromHashChange = false } = {}) {
+  if (!TAB_PANES[name]) name = "card";
+  for (const k of Object.keys(TAB_PANES)) {
+    const isActive = k === name;
+    TAB_BTNS[k].classList.toggle("active", isActive);
+    TAB_BTNS[k].setAttribute("aria-selected", isActive ? "true" : "false");
+    TAB_PANES[k].hidden = !isActive;
+  }
+  if (!fromHashChange) {
+    history.replaceState(null, "", "#" + name);
+  }
+  // Keep top of new view in view; iOS Safari can leave you mid-scroll otherwise.
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+for (const [name, btn] of Object.entries(TAB_BTNS)) {
+  btn.addEventListener("click", () => setActiveTab(name));
+}
+window.addEventListener("hashchange", () => {
+  const target = (location.hash || "#card").replace(/^#/, "");
+  setActiveTab(target, { fromHashChange: true });
+});
+// Honor hash on first load.
+setActiveTab((location.hash || "#card").replace(/^#/, ""), { fromHashChange: true });
+
+// Reflect "currently recording" on the conversation tab so the user sees a
+// pulsing dot even when they've navigated to the card tab.
+function setConvTabLive(on) {
+  TAB_BTNS.conversation.classList.toggle("live", !!on);
+}
 
 // Two file inputs to give iOS Safari unambiguous "camera" vs "library" hints.
 const cameraFile  = document.getElementById("cameraFile");
@@ -1290,6 +1428,7 @@ startBtn.addEventListener("click", async () => {
   if (!ok) return;
 
   convChip.textContent = "recording";
+  setConvTabLive(true);                    // show pulsing dot on Conversation tab
   startBtn.style.display = "none";
   stopBtn.style.display = "";
   setConvStatus("Recording — speak normally. Click Stop when done.");
@@ -1297,6 +1436,7 @@ startBtn.addEventListener("click", async () => {
 
 stopBtn.addEventListener("click", async () => {
   convChip.textContent = "uploading";
+  setConvTabLive(false);
   stopBtn.style.display = "none";
   startBtn.style.display = "";
   setConvStatus("Stopping recording…");
