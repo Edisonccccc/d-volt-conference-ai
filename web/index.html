@@ -75,6 +75,17 @@
   * { box-sizing: border-box; }
   html, body { -webkit-text-size-adjust: 100%; }
 
+  /* Visually hide a control while keeping it in the layout & focusable.
+     Using `display: none` (or the `hidden` attribute) on a file input
+     causes iOS Safari to ignore the `capture` attribute. */
+  .vh {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0;
+  }
+
   body {
     margin: 0;
     background: var(--bg);
@@ -639,7 +650,7 @@
 <main>
   <section class="panel">
     <h2><span class="step">1</span>Upload card</h2>
-    <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose or take a photo of a business card">
+    <div class="drop" id="drop" role="button" tabindex="0" aria-label="Take a photo of a business card">
       <span class="drop-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
              stroke="currentColor" stroke-width="1.6"
@@ -650,7 +661,20 @@
       </span>
       <div class="drop-text" id="dropText">Tap to take a photo, or drop one here</div>
     </div>
-    <input type="file" id="file" accept="image/*" capture="environment" hidden />
+
+    <!-- Two file inputs so iOS Safari gets unambiguous "camera" vs
+         "library" hints. Both are visually hidden via CSS (the `hidden`
+         attribute is known to make iOS Safari ignore capture=). -->
+    <input type="file" id="cameraFile"  accept="image/*" capture="environment" class="vh" />
+    <input type="file" id="libraryFile" accept="image/*" class="vh" />
+
+    <!-- Quick alternative: pick from library if "Take photo" doesn't fit. -->
+    <div style="margin-top: 8px; text-align: center;">
+      <a href="#" id="pickLibraryLink"
+         style="font-size: 13px; color: var(--muted); text-decoration: none;">
+        or choose from library
+      </a>
+    </div>
     <div class="preview" id="preview"></div>
     <button id="submit" class="btn-lg" disabled>
       <span class="btn-spinner"></span>
@@ -736,7 +760,12 @@
 const API_BASE = (location.pathname.startsWith("/app") ? "" : "http://localhost:8000");
 document.getElementById("apiHint").textContent = API_BASE ? "API: " + API_BASE : "API: same origin";
 
-const fileInput = document.getElementById("file");
+// Two file inputs to give iOS Safari unambiguous "camera" vs "library" hints.
+const cameraFile  = document.getElementById("cameraFile");
+const libraryFile = document.getElementById("libraryFile");
+// Tapping the drop zone opens the camera; the library link sits below.
+const fileInput = cameraFile;  // alias so legacy code reads naturally
+const libraryLink = document.getElementById("pickLibraryLink");
 const drop = document.getElementById("drop");
 const preview = document.getElementById("preview");
 const submitBtn = document.getElementById("submit");
@@ -872,9 +901,21 @@ drop.addEventListener("keydown", e => {
 drop.addEventListener("drop", e => {
   if (e.dataTransfer?.files?.[0]) handleFile(e.dataTransfer.files[0]);
 });
-fileInput.addEventListener("change", () => {
-  if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+// Both inputs go through handleFile.
+cameraFile.addEventListener("change", () => {
+  if (cameraFile.files?.[0]) handleFile(cameraFile.files[0]);
 });
+libraryFile.addEventListener("change", () => {
+  if (libraryFile.files?.[0]) handleFile(libraryFile.files[0]);
+});
+
+// Link below the drop zone: open the photo library (no `capture` attr).
+if (libraryLink) {
+  libraryLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    libraryFile.click();
+  });
+}
 
 function handleFile(f) {
   chosenFile = f;
@@ -883,8 +924,9 @@ function handleFile(f) {
   submitBtn.disabled = false;
   document.getElementById("dropText").textContent = f.name;
   setStatus("");
-  // Reset the input so picking the same file again still fires `change`.
-  fileInput.value = "";
+  // Reset both inputs so picking the same file again still fires `change`.
+  cameraFile.value = "";
+  libraryFile.value = "";
 }
 
 // ---- submit + poll --------------------------------------------------------
