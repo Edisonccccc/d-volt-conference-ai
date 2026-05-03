@@ -659,7 +659,7 @@
           <circle cx="12" cy="13" r="3"/>
         </svg>
       </span>
-      <div class="drop-text" id="dropText">Tap to take a photo, or drop one here</div>
+      <div class="drop-text" id="dropText">Take a photo</div>
     </div>
 
     <!-- Two file inputs so iOS Safari gets unambiguous "camera" vs
@@ -668,13 +668,15 @@
     <input type="file" id="cameraFile"  accept="image/*" capture="environment" class="vh" />
     <input type="file" id="libraryFile" accept="image/*" class="vh" />
 
-    <!-- Quick alternative: pick from library if "Take photo" doesn't fit. -->
-    <div style="margin-top: 8px; text-align: center;">
-      <a href="#" id="pickLibraryLink"
-         style="font-size: 13px; color: var(--muted); text-decoration: none;">
-        or choose from library
-      </a>
-    </div>
+    <button type="button" id="pickLibraryBtn" class="secondary">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="9" cy="9" r="1.5"/>
+        <path d="m21 15-5-5L5 21"/>
+      </svg>
+      <span>Choose from library</span>
+    </button>
     <div class="preview" id="preview"></div>
     <button id="submit" class="btn-lg" disabled>
       <span class="btn-spinner"></span>
@@ -765,7 +767,7 @@ const cameraFile  = document.getElementById("cameraFile");
 const libraryFile = document.getElementById("libraryFile");
 // Tapping the drop zone opens the camera; the library link sits below.
 const fileInput = cameraFile;  // alias so legacy code reads naturally
-const libraryLink = document.getElementById("pickLibraryLink");
+const libraryBtn = document.getElementById("pickLibraryBtn");
 const drop = document.getElementById("drop");
 const preview = document.getElementById("preview");
 const submitBtn = document.getElementById("submit");
@@ -909,9 +911,9 @@ libraryFile.addEventListener("change", () => {
   if (libraryFile.files?.[0]) handleFile(libraryFile.files[0]);
 });
 
-// Link below the drop zone: open the photo library (no `capture` attr).
-if (libraryLink) {
-  libraryLink.addEventListener("click", (e) => {
+// Secondary button below the drop zone: open the photo library (no `capture`).
+if (libraryBtn) {
+  libraryBtn.addEventListener("click", (e) => {
     e.preventDefault();
     libraryFile.click();
   });
