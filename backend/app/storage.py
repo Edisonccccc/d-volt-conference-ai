@@ -112,11 +112,15 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
 
-        # One-time wipe of legacy test data (rows with no owner). After auth
-        # is in place every new row has user_id set, so subsequent runs are
-        # no-ops. Setting KEEP_LEGACY_DATA=1 skips this for callers who'd
-        # rather assign-then-keep.
-        if os.getenv("KEEP_LEGACY_DATA") not in ("1", "true", "yes"):
+        # One-time wipe of legacy test data (rows with no owner) — but only
+        # at true bootstrap, before any user has registered. Once a user
+        # exists this becomes a no-op forever, so any future bug that
+        # accidentally creates a NULL-user_id row won't be silently deleted.
+        # KEEP_LEGACY_DATA=1 still bypasses the wipe entirely if you'd
+        # rather assign-then-keep at first deploy.
+        user_count_row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
+        is_bootstrap = (user_count_row[0] if user_count_row else 0) == 0
+        if is_bootstrap and os.getenv("KEEP_LEGACY_DATA") not in ("1", "true", "yes"):
             conn.execute("DELETE FROM cards         WHERE user_id IS NULL")
             conn.execute("DELETE FROM conversations WHERE user_id IS NULL")
 

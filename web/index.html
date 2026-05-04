@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>D-Volt Conference AI Assistant — Card Tester</title>
-<meta name="x-app-version" content="v0.3.0" />
+<meta name="x-app-version" content="v0.4.0" />
 <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)" />
 <style>
@@ -253,6 +253,152 @@
     background: var(--err-soft);
     border-color: var(--err);
     box-shadow: none;
+  }
+
+  /* ----- History tab ------------------------------------------------ */
+  .subtabs {
+    display: inline-flex;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 4px;
+    background: var(--surface-2);
+    border-radius: var(--radius-pill);
+  }
+  .subtab {
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    margin: 0;
+    padding: 7px 16px;
+    border-radius: var(--radius-pill);
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: none;
+    width: auto;
+    min-height: 0;
+  }
+  .subtab.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-xs); }
+
+  .search-box {
+    width: 100%;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    border-radius: var(--radius-input);
+    font: inherit;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .search-box:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .history-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    overflow: hidden;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .history-item:hover { border-color: var(--border-strong); }
+  .history-item.expanded { box-shadow: var(--shadow-sm); border-color: var(--accent-soft); }
+
+  .history-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .history-summary .h-main { flex: 1; min-width: 0; }
+  .history-summary .h-title {
+    font-weight: 600;
+    font-size: 14.5px;
+    color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .history-summary .h-sub {
+    color: var(--muted);
+    font-size: 12.5px;
+    margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .history-summary .h-sub b { color: var(--ink); font-weight: 600; }
+  .history-summary .h-meta {
+    color: var(--soft);
+    font-size: 11.5px;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .history-summary .chev {
+    width: 16px; height: 16px;
+    color: var(--soft);
+    transition: transform var(--transition);
+    flex-shrink: 0;
+  }
+  .history-item.expanded .chev { transform: rotate(180deg); }
+
+  .history-detail {
+    padding: 4px 16px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    animation: fade-in 200ms ease-out;
+  }
+  .history-detail h3 {
+    margin: 14px 0 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .history-detail .field {
+    grid-template-columns: 100px 1fr;
+    padding: 6px 0;
+    font-size: 13.5px;
+  }
+  .history-detail ul.bullets li {
+    margin: 4px 0;
+    font-size: 13.5px;
+  }
+  .history-detail .one-para {
+    background: var(--accent-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 4px 0 6px;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .history-detail .transcript-block {
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    white-space: pre-wrap;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .history-empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 28px 12px;
+    font-size: 14px;
+  }
+  @media (max-width: 640px) {
+    .history-summary .h-meta { display: none; }
+    .history-detail .field { grid-template-columns: 1fr; gap: 2px; }
   }
 
   /* ----- admin (users) table ---------------------------------------- */
@@ -1001,7 +1147,7 @@
     </span>
     <div>
       <h1>D-Volt Conference AI</h1>
-      <div class="sub">Sales meeting copilot · v0.3.0</div>
+      <div class="sub">Sales meeting copilot · v0.4.0</div>
     </div>
   </div>
   <div class="user-menu" id="userMenu">
@@ -1035,6 +1181,14 @@
       </svg>
       <span>Conversation</span>
       <span class="live-dot" aria-hidden="true"></span>
+    </button>
+    <button class="tab" id="tab-history-btn" role="tab" aria-selected="false" data-tab="history">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v5l3 2"/>
+      </svg>
+      <span>History</span>
     </button>
     <button class="tab admin-only" id="tab-admin-btn" role="tab" aria-selected="false" data-tab="admin">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1163,6 +1317,21 @@
     <div id="summary"></div>
   </section>
   </div><!-- /#tab-conversation -->
+
+  <div class="tab-content" id="tab-history" role="tabpanel" aria-labelledby="tab-history-btn" hidden>
+  <section class="panel">
+    <h2><span class="step">H</span>History<span class="chip" id="historyCountChip">0</span></h2>
+    <div class="subtabs">
+      <button class="subtab active" data-section="cards" id="sub-cards-btn">Cards</button>
+      <button class="subtab" data-section="conversations" id="sub-conv-btn">Conversations</button>
+    </div>
+    <input type="text" id="historySearch" class="search-box"
+           placeholder="Search by name, company, or content…" />
+    <div class="history-list" id="historyList">
+      <div class="history-empty">Loading…</div>
+    </div>
+  </section>
+  </div><!-- /#tab-history -->
 
   <div class="tab-content admin-only" id="tab-admin" role="tabpanel" aria-labelledby="tab-admin-btn" hidden>
   <section class="panel">
@@ -1375,11 +1544,13 @@ applyAuthMode();
 const TAB_BTNS = {
   card:         document.getElementById("tab-card-btn"),
   conversation: document.getElementById("tab-conv-btn"),
+  history:      document.getElementById("tab-history-btn"),
   admin:        document.getElementById("tab-admin-btn"),
 };
 const TAB_PANES = {
   card:         document.getElementById("tab-card"),
   conversation: document.getElementById("tab-conversation"),
+  history:      document.getElementById("tab-history"),
   admin:        document.getElementById("tab-admin"),
 };
 
@@ -1397,6 +1568,7 @@ function setActiveTab(name, { fromHashChange = false } = {}) {
     history.replaceState(null, "", "#" + name);
   }
   if (name === "admin") loadAdminUsers();
+  if (name === "history") loadHistory();
   // Keep top of new view in view; iOS Safari can leave you mid-scroll otherwise.
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2126,6 +2298,225 @@ async function loadAdminUsers() {
   } catch (err) {
     setAdminStatus(err.message || String(err), true);
   }
+}
+
+// ===========================================================================
+// History tab — inline expandable list of past cards & conversations
+// ===========================================================================
+const historyListEl     = document.getElementById("historyList");
+const historyCountChip  = document.getElementById("historyCountChip");
+const historySearchEl   = document.getElementById("historySearch");
+const subCardsBtn       = document.getElementById("sub-cards-btn");
+const subConvBtn        = document.getElementById("sub-conv-btn");
+
+let historyState = {
+  section: "cards",       // "cards" | "conversations"
+  cards: null,            // array from /cards
+  conversations: null,    // array from /conversations
+  searchQuery: "",
+  expandedId: null,       // id currently expanded
+  detailCache: {},        // id -> full record (avoid refetch)
+};
+
+function fmtRelative(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const ms = Date.now() - d.getTime();
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60)        return "just now";
+  if (sec < 3600)      return Math.floor(sec / 60) + "m ago";
+  if (sec < 86400)     return Math.floor(sec / 3600) + "h ago";
+  if (sec < 86400 * 7) return Math.floor(sec / 86400) + "d ago";
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+[subCardsBtn, subConvBtn].forEach(btn => {
+  btn.addEventListener("click", () => {
+    historyState.section = btn.dataset.section;
+    subCardsBtn.classList.toggle("active", historyState.section === "cards");
+    subConvBtn.classList.toggle("active",  historyState.section === "conversations");
+    historyState.expandedId = null;
+    renderHistoryList();
+  });
+});
+
+historySearchEl.addEventListener("input", () => {
+  historyState.searchQuery = historySearchEl.value.toLowerCase().trim();
+  renderHistoryList();
+});
+
+async function loadHistory() {
+  // Lazy: only fetch the section the user is currently looking at, plus the
+  // other one in parallel so the count chip is honest.
+  historyListEl.innerHTML = `<div class="history-empty">Loading…</div>`;
+  try {
+    const [cardsRes, convRes] = await Promise.all([
+      authFetch("/cards?limit=100"),
+      authFetch("/conversations?limit=100"),
+    ]);
+    historyState.cards         = cardsRes.ok ? await cardsRes.json() : [];
+    historyState.conversations = convRes.ok  ? await convRes.json()  : [];
+    renderHistoryList();
+  } catch (err) {
+    historyListEl.innerHTML = `<div class="history-empty err">Could not load history: ${escapeHtml(err.message || err)}</div>`;
+  }
+}
+
+function renderHistoryList() {
+  const items = historyState.section === "cards"
+    ? (historyState.cards || [])
+    : (historyState.conversations || []);
+
+  // Filter client-side. For cards, match name/company. For conversations,
+  // match customer name/company in the list payload (transcript content
+  // requires a refetch, intentionally not done here).
+  const q = historyState.searchQuery;
+  const filtered = !q ? items : items.filter(it => {
+    const hay = historyState.section === "cards"
+      ? `${it.name || ""} ${it.company || ""} ${it.id || ""}`
+      : `${it.customer_name || ""} ${it.customer_company || ""} ${it.id || ""}`;
+    return hay.toLowerCase().includes(q);
+  });
+
+  historyCountChip.textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    historyListEl.innerHTML = `<div class="history-empty">${q ? "No results match your search." : "Nothing here yet — analyze a card or record a conversation to start."}</div>`;
+    return;
+  }
+
+  historyListEl.innerHTML = filtered.map(it => {
+    const isExpanded = historyState.expandedId === it.id;
+    const summaryHtml = historyState.section === "cards"
+      ? renderCardSummary(it) : renderConversationSummary(it);
+    return `
+      <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${escapeHtml(it.id)}">
+        <div class="history-summary">
+          <div class="h-main">${summaryHtml}</div>
+          <span class="h-meta">${escapeHtml(fmtRelative(it.created_at || it.started_at))}</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+        ${isExpanded ? `<div class="history-detail" id="hd-${escapeHtml(it.id)}">${
+          renderHistoryDetailLoading()}</div>` : ""}
+      </div>`;
+  }).join("");
+
+  // If something is expanded, fetch + render its full detail asynchronously.
+  if (historyState.expandedId) {
+    loadAndRenderDetail(historyState.expandedId);
+  }
+}
+
+function renderCardSummary(c) {
+  const title = `${escapeHtml(c.name || "(unknown name)")} · ${escapeHtml(c.company || "—")}`;
+  const sub = `Status: <b>${escapeHtml(c.status)}</b>`;
+  return `<div class="h-title">${title}</div><div class="h-sub">${sub}</div>`;
+}
+
+function renderConversationSummary(c) {
+  const customer = (c.customer_name || c.customer_company)
+    ? `${escapeHtml(c.customer_name || "—")} · ${escapeHtml(c.customer_company || "—")}`
+    : "Unlinked conversation";
+  const sub = `Status: <b>${escapeHtml(c.status)}</b>`;
+  return `<div class="h-title">${customer}</div><div class="h-sub">${sub}</div>`;
+}
+
+function renderHistoryDetailLoading() {
+  return `<div class="skeleton long"></div><div class="skeleton short"></div><div class="skeleton long"></div>`;
+}
+
+historyListEl.addEventListener("click", (e) => {
+  const item = e.target.closest(".history-item");
+  if (!item) return;
+  // Don't toggle if user clicked something interactive inside an expanded detail
+  if (e.target.closest("a, button")) return;
+  const id = item.dataset.id;
+  historyState.expandedId = (historyState.expandedId === id) ? null : id;
+  renderHistoryList();
+});
+
+async function loadAndRenderDetail(id) {
+  const detailEl = document.getElementById("hd-" + id);
+  if (!detailEl) return;
+  let full = historyState.detailCache[id];
+  if (!full) {
+    try {
+      const path = (historyState.section === "cards" ? "/cards/" : "/conversations/") + encodeURIComponent(id);
+      const r = await authFetch(path);
+      if (!r.ok) throw new Error("Failed to load detail (" + r.status + ")");
+      full = await r.json();
+      historyState.detailCache[id] = full;
+    } catch (err) {
+      detailEl.innerHTML = `<div class="status err show">${escapeHtml(err.message || err)}</div>`;
+      return;
+    }
+  }
+  detailEl.innerHTML = historyState.section === "cards"
+    ? renderCardDetailInline(full)
+    : renderConversationDetailInline(full);
+}
+
+function renderCardDetailInline(c) {
+  const ex = c.extracted || {};
+  const r  = c.research  || {};
+  const websiteUrl  = r.company_website || ex.website;
+  const linkedinUrl = r.contact_linkedin || ex.linkedin;
+  return `
+    <h3>Contact</h3>
+    ${renderField("Name",     ex.name)}
+    ${renderField("Title",    titleDisplay(ex.title, r.contact_title_verified))}
+    ${renderField("Company",  ex.company)}
+    ${renderField("Emails",   ex.emails)}
+    ${renderField("Phones",   ex.phones)}
+    ${renderLinkField("Website",  websiteUrl)}
+    ${renderField("Address",  ex.address)}
+    ${renderLinkField("LinkedIn", linkedinUrl)}
+
+    <h3>Company brief</h3>
+    ${renderCategory(r.company_category, r.category_rationale)}
+    ${renderField("One-liner", r.one_liner)}
+    ${renderField("Industry",  r.industry)}
+    ${renderField("Size",      r.estimated_size)}
+    ${renderField("Products",  r.products)}
+
+    ${r.recent_news && r.recent_news.length ? `<h3>Recent news</h3>${renderBullets(r.recent_news)}` : ""}
+    ${r.pain_points && r.pain_points.length ? `<h3>Likely pain points</h3>${renderBullets(r.pain_points)}` : ""}
+    ${r.opening_questions && r.opening_questions.length ? `<h3>Opening questions</h3>${renderBullets(r.opening_questions)}` : ""}
+    ${r.sources && r.sources.length ? `<h3>Sources</h3>${renderBullets(r.sources)}` : ""}
+
+    ${c.pdf_url ? `
+      <div class="pdf-row">
+        <a href="${API_BASE}${c.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
+        <a href="${API_BASE}${c.pdf_url}" download><button>Download PDF</button></a>
+      </div>` : ""}
+  `;
+}
+
+function renderConversationDetailInline(c) {
+  const s = c.summary || {};
+  const card = c.card_id ? (historyState.cards || []).find(x => x.id === c.card_id) : null;
+  return `
+    ${card ? `<h3>Customer</h3>${renderField("Name", card.name)}${renderField("Company", card.company)}` : ""}
+    <h3>Started</h3>
+    <div class="meta-line">${escapeHtml(c.started_at)}${c.ended_at ? " · ended " + escapeHtml(c.ended_at) : ""}</div>
+
+    ${s.summary ? `<h3>Summary</h3><div class="one-para">${escapeHtml(s.summary)}</div>` : ""}
+    ${s.key_topics && s.key_topics.length        ? `<h3>Key topics</h3>${renderBullets(s.key_topics)}` : ""}
+    ${s.customer_concerns && s.customer_concerns.length ? `<h3>Customer concerns</h3>${renderBullets(s.customer_concerns)}` : ""}
+    ${s.commitments && s.commitments.length      ? `<h3>Commitments</h3>${renderBullets(s.commitments)}` : ""}
+    ${s.next_steps && s.next_steps.length        ? `<h3>Next steps</h3>${renderBullets(s.next_steps)}` : ""}
+    ${s.follow_up_email ? `<h3>Draft follow-up email</h3><div class="email-draft">${escapeHtml(s.follow_up_email)}</div>` : ""}
+    ${c.transcript ? `<h3>Transcript (verbatim)</h3><div class="transcript-block">${escapeHtml(c.transcript)}</div>` : ""}
+
+    ${c.pdf_url ? `
+      <div class="pdf-row">
+        <a href="${API_BASE}${c.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
+        <a href="${API_BASE}${c.pdf_url}" download><button>Download PDF</button></a>
+      </div>` : ""}
+  `;
 }
 
 usersTbody.addEventListener("click", async (e) => {
