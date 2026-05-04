@@ -1493,7 +1493,7 @@
   <div class="tab-content" id="tab-card" role="tabpanel" aria-labelledby="tab-card-btn">
   <div class="card-grid">
   <section class="panel">
-    <h2><span class="step">1</span>Upload card</h2>
+    <h2><span class="step">1</span>Upload name card</h2>
     <div class="drop" id="drop" role="button" tabindex="0" aria-label="Take a photo of a business card">
       <span class="drop-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none"
@@ -1528,25 +1528,25 @@
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M9.94 14.06A2 2 0 0 0 8.5 12.6L2.4 11a.5.5 0 0 1 0-.96l6.1-1.59a2 2 0 0 0 1.44-1.44l1.6-6.13a.5.5 0 0 1 .96 0l1.58 6.13a2 2 0 0 0 1.44 1.44l6.13 1.59a.5.5 0 0 1 0 .96l-6.13 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.13a.5.5 0 0 1-.96 0z"/>
       </svg>
-      <span id="submitLabel">Analyze card</span>
+      <span id="submitLabel">Analyze name card</span>
     </button>
     <div class="status" id="status"></div>
   </section>
 
   <section class="panel" id="resultPanel" style="display:none;">
-    <h2><span class="step">2</span>Result<span class="chip" id="statusChip">pending</span></h2>
+    <h2><span class="step">2</span>Analysis result<span class="chip" id="statusChip">pending</span></h2>
 
     <div class="progressbar" id="progressbar"><span></span></div>
 
     <ol class="stages" id="stages">
       <li class="stage" data-key="upload">
         <span class="dot"></span>
-        <span class="label">Upload card</span>
+        <span class="label">Upload name card</span>
         <span class="meta" id="meta-upload"></span>
       </li>
       <li class="stage" data-key="extract">
         <span class="dot"></span>
-        <span class="label">Read fields from card</span>
+        <span class="label">Read fields from name card</span>
         <span class="meta" id="meta-extract"></span>
       </li>
       <li class="stage" data-key="research">
@@ -2282,7 +2282,7 @@ submitBtn.addEventListener("click", async () => {
     showProgress(false);
     setStatus(err.message || String(err), true);
     setStage("upload", "failed", "upload failed");
-    setBtnLoading(false, "Analyze card");
+    setBtnLoading(false, "Analyze name card");
   }
 });
 
