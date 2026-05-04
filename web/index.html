@@ -2061,6 +2061,45 @@ if (libraryBtn) {
   });
 }
 
+/** Resize an image blob so the long edge is at most `maxDim` pixels, then
+ *  re-encode as JPEG. Returns the original blob if it's already small.
+ *  Slashes Anthropic vision token cost ~16x for typical phone photos. */
+async function resizeImageBlob(blob, maxDim = 1024, quality = 0.85) {
+  if (!/^image\//.test(blob.type || "")) return blob;
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    // Fallback: <img> via object URL (covers older Safari)
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    try {
+      await new Promise((res, rej) => {
+        img.onload = () => res();
+        img.onerror = (e) => rej(e);
+        img.src = url;
+      });
+      bitmap = img;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  const w0 = bitmap.width  || bitmap.naturalWidth;
+  const h0 = bitmap.height || bitmap.naturalHeight;
+  const ratio = Math.min(maxDim / w0, maxDim / h0, 1);
+  if (ratio >= 1) return blob;        // already small enough — ship as-is
+  const w = Math.round(w0 * ratio);
+  const h = Math.round(h0 * ratio);
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const resized = await new Promise(res =>
+    canvas.toBlob(b => res(b || blob), "image/jpeg", quality)
+  );
+  return resized || blob;
+}
+
 function handleFile(f) {
   chosenFile = f;
   const url = URL.createObjectURL(f);
@@ -2087,8 +2126,17 @@ submitBtn.addEventListener("click", async () => {
   renderSkeleton();
 
   try {
+    // Downscale before upload — Anthropic vision is priced per image token
+    // (≈ width × height ÷ 750), so a 16 MP photo is ~16k tokens vs ~1k at 1024px.
+    let toSend = chosenFile;
+    try {
+      toSend = await resizeImageBlob(chosenFile, 1024, 0.85);
+    } catch (e) {
+      // If resize ever fails for any reason, fall back to the original.
+      toSend = chosenFile;
+    }
     const fd = new FormData();
-    fd.append("photo", chosenFile);
+    fd.append("photo", toSend, "card.jpg");
     const res = await authFetch("/cards", { method: "POST", body: fd });
     if (!res.ok) throw new Error("Upload failed: " + res.status + " " + (await res.text()));
     const { id } = await res.json();

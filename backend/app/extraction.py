@@ -18,7 +18,14 @@ from .models import ExtractedCard
 
 
 log = logging.getLogger("conference-ai.extraction")
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+
+# Card extraction is essentially OCR + light field labeling — a tiny task
+# Haiku handles ~as well as Sonnet at roughly 1/4 the cost. Override via
+# ANTHROPIC_EXTRACTION_MODEL if you ever see quality issues.
+MODEL = os.getenv(
+    "ANTHROPIC_EXTRACTION_MODEL",
+    os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5"),
+)
 
 
 # JSON Schema for the tool. Forcing tool use is the most reliable way

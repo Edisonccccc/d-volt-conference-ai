@@ -1,7 +1,13 @@
 """Company research agent. Claude + web_search server tool -> structured brief.
 
-Falls back to a search-less brief if web_search is unavailable on the
-account or the call errors out, so the pipeline always produces something.
+Optimization (slice 5): instead of one ~40s sequential research call with up
+to 5 chained web searches, we fan out into THREE concurrent calls that each
+do focused work — basics + classification, recent news, and contact LinkedIn.
+The three run in a ThreadPoolExecutor and cost ~the same in dollars but
+collapse wall-clock to ~max(call) ≈ 12-15s.
+
+Falls back to a search-less brief if web_search is unavailable, so the
+pipeline always produces something.
 """
 
 from __future__ import annotations
@@ -9,7 +15,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Optional, Tuple
 
 from anthropic import APIStatusError
 
@@ -28,44 +35,34 @@ DEFAULT_COMPANY_CONTEXT = (
     "downtime reduction."
 )
 
-WEB_SEARCH_TOOL = {
-    "type": "web_search_20250305",
-    "name": "web_search",
-    "max_uses": 5,
-}
+# Cache_control caches the `tools` block + system prefix across calls.
+# Repeated cards on the same model hit the cache for ~10% of normal input.
+CACHE = {"type": "ephemeral"}
 
-SUBMIT_TOOL = {
-    "name": "submit_research_brief",
+
+def _ws_tool(max_uses: int) -> dict:
+    return {
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "max_uses": max_uses,
+    }
+
+
+# ---- Tool schemas --------------------------------------------------------
+
+# Tool 1: company basics + classification + pain points + opening questions.
+SUBMIT_BASICS = {
+    "name": "submit_company_basics",
     "description": (
-        "Deliver the final research brief to the salesperson. Call this once, "
-        "after web research is complete."
+        "Deliver company facts and pre-meeting talking points. Call exactly "
+        "once after gathering enough info from web search."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "contact_linkedin": {
-                "type": "string",
-                "description": (
-                    "The contact's PERSONAL LinkedIn profile URL "
-                    "(linkedin.com/in/<handle>). Use search like 'site:linkedin.com/in <name> "
-                    "<company>'. Leave blank if you cannot find a confident "
-                    "match for this specific person."
-                ),
-            },
-            "contact_title_verified": {
-                "type": "string",
-                "description": (
-                    "The contact's current title from LinkedIn or the "
-                    "company website. May confirm or correct the title on "
-                    "the card. Leave blank if not found."
-                ),
-            },
             "company_website": {
                 "type": "string",
-                "description": (
-                    "The company's official website (root URL). Verify "
-                    "via web search rather than relying on the card alone."
-                ),
+                "description": "The company's official website (root URL).",
             },
             "one_liner": {
                 "type": "string",
@@ -74,33 +71,18 @@ SUBMIT_TOOL = {
             "company_category": {
                 "type": "string",
                 "enum": [
-                    "Utility",
-                    "Vendor",
-                    "EPC",
-                    "Sales Representatives",
-                    "Distributors",
-                    "End Users",
-                    "Other",
+                    "Utility", "Vendor", "EPC", "Sales Representatives",
+                    "Distributors", "End Users", "Other",
                 ],
                 "description": (
-                    "Classify the company relative to d-volt's market. "
-                    "Utility = electric/power utility. "
-                    "Vendor = supplier of components or equipment. "
-                    "EPC = engineering/procurement/construction firm. "
-                    "Sales Representatives = independent reps selling power "
-                    "products. Distributors = resellers / channel partners. "
-                    "End Users = the actual users of d-volt's hardware "
-                    "(industrial sites, commercial buildings, data centers). "
-                    "Other = anything else, including competitors."
+                    "Classification relative to d-volt's market: Utility, "
+                    "Vendor, EPC, Sales Representatives, Distributors, End "
+                    "Users, or Other (e.g. competitor)."
                 ),
             },
             "category_rationale": {
                 "type": "string",
-                "description": (
-                    "One short sentence explaining why you chose that "
-                    "category. If 'Other', name the specific reason "
-                    "(e.g. 'competitor of d-volt')."
-                ),
+                "description": "One short sentence on why this category was chosen.",
             },
             "industry": {"type": "string"},
             "estimated_size": {
@@ -108,36 +90,25 @@ SUBMIT_TOOL = {
                 "description": "Headcount range or revenue band if known.",
             },
             "products": {
-                "type": "array",
-                "items": {"type": "string"},
+                "type": "array", "items": {"type": "string"},
                 "description": "Their main products or service lines.",
             },
-            "recent_news": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": (
-                    "Bullet notes on news from roughly the last 90 days. "
-                    "Each bullet should be one short sentence."
-                ),
-            },
             "pain_points": {
-                "type": "array",
-                "items": {"type": "string"},
+                "type": "array", "items": {"type": "string"},
                 "description": (
                     "Likely pain points framed against the seller's offering. "
-                    "Be specific; tie each to something observed in the research."
+                    "Be specific; tie to something observed in the research."
                 ),
             },
             "opening_questions": {
-                "type": "array",
-                "items": {"type": "string"},
+                "type": "array", "items": {"type": "string"},
                 "description": (
-                    "Exactly three short questions the salesperson can open with."
+                    "Exactly three short opening questions specific to the "
+                    "research findings (not generic)."
                 ),
             },
             "sources": {
-                "type": "array",
-                "items": {"type": "string"},
+                "type": "array", "items": {"type": "string"},
                 "description": "URLs cited.",
             },
         },
@@ -145,185 +116,321 @@ SUBMIT_TOOL = {
     },
 }
 
-SYSTEM = (
+# Tool 2: recent news bullets (last ~90 days).
+SUBMIT_NEWS = {
+    "name": "submit_recent_news",
+    "description": "Return bullet-style notes on company news from the last ~90 days.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "recent_news": {
+                "type": "array", "items": {"type": "string"},
+                "description": (
+                    "Bullet notes on news from roughly the last 90 days. "
+                    "Each bullet should be one short sentence."
+                ),
+            },
+            "sources": {
+                "type": "array", "items": {"type": "string"},
+                "description": "URLs cited.",
+            },
+        },
+        "required": [],
+    },
+}
+
+# Tool 3: verified contact LinkedIn + title.
+SUBMIT_CONTACT = {
+    "name": "submit_contact_info",
+    "description": (
+        "Deliver the contact's PERSONAL LinkedIn URL and verified title. "
+        "Leave fields blank if not confidently found."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "contact_linkedin": {
+                "type": "string",
+                "description": (
+                    "The contact's PERSONAL LinkedIn profile URL "
+                    "(linkedin.com/in/<handle>). Not the company's page."
+                ),
+            },
+            "contact_title_verified": {
+                "type": "string",
+                "description": (
+                    "The contact's current title from LinkedIn or the "
+                    "company website. Leave blank if not found."
+                ),
+            },
+            "sources": {
+                "type": "array", "items": {"type": "string"},
+                "description": "URLs cited.",
+            },
+        },
+        "required": [],
+    },
+}
+
+
+SYSTEM_BASE = (
     "You are a sharp B2B sales analyst. You research companies and produce "
-    "concise, sourced briefs. You prefer specifics over fluff."
+    "concise, sourced facts. You prefer specifics over fluff."
 )
 
 
-def _build_prompt(card: ExtractedCard, company_context: str) -> str:
-    contact_lines = []
-    if card.name:
-        contact_lines.append(f"Name: {card.name}")
-    if card.title:
-        contact_lines.append(f"Title: {card.title}")
-    if card.company:
-        contact_lines.append(f"Company: {card.company}")
-    if card.website:
-        contact_lines.append(f"Website: {card.website}")
-    if card.emails:
-        contact_lines.append(f"Email: {', '.join(card.emails)}")
-    if card.address:
-        contact_lines.append(f"Address: {card.address}")
-    if card.linkedin:
-        contact_lines.append(f"LinkedIn: {card.linkedin}")
+def _system_block() -> list:
+    """System block with cache_control so the static prefix gets cached."""
+    return [{"type": "text", "text": SYSTEM_BASE, "cache_control": CACHE}]
 
-    contact = "\n".join(contact_lines) if contact_lines else "(no fields extracted)"
 
+def _contact_lines(card: ExtractedCard) -> str:
+    rows = []
+    for label, val in [
+        ("Name", card.name), ("Title", card.title), ("Company", card.company),
+        ("Website", card.website), ("Email", ", ".join(card.emails or [])),
+        ("Address", card.address), ("LinkedIn", card.linkedin),
+    ]:
+        if val:
+            rows.append(f"{label}: {val}")
+    return "\n".join(rows) if rows else "(no fields extracted)"
+
+
+# ---- Sub-call prompts ----------------------------------------------------
+
+def _basics_prompt(card: ExtractedCard, company_context: str) -> str:
     return f"""\
-You are preparing a salesperson at d-volt for a meeting with the contact
-described below. d-volt's context:
-
+Your seller is at d-volt. Their context:
 {company_context}
 
-Contact info pulled from a business card:
-{contact}
+Contact info from a business card:
+{_contact_lines(card)}
 
-Use the web_search tool to gather information. Cover BOTH the contact and
-their company:
-
-About the contact:
-- Find this PERSON's LinkedIn profile (linkedin.com/in/<handle>). Search
-  '<name> <company> linkedin' or 'site:linkedin.com/in <name> <company>'.
-  Do not return the company's LinkedIn page here. Only return the URL if
-  you are confident it is the same person — otherwise leave it blank.
-- Confirm or correct their current title from LinkedIn or the company's
-  team/about page. Put the verified title in `contact_title_verified`.
-
-About the company:
-- Verify the company's official website URL (root domain).
-- Classify the company in `company_category` as exactly one of:
-  Utility | Vendor | EPC | Sales Representatives | Distributors | End Users | Other.
-  Use 'Other' only when none of the first six fit, and put the specific
-  label (e.g. 'competitor of d-volt') in `category_rationale`.
-- Recent news from the last ~90 days.
-- Products/services, headcount or revenue if public.
+GOAL: Produce a focused company brief. Use up to 3 web searches to find:
+- The company's official website (verify, don't guess).
+- What the company does (one-liner, industry, size if public, products).
 - Anything that hints at power-quality, reliability, or energy challenges.
 
-When research is sufficient (no more than 5 searches), call
-`submit_research_brief` exactly once with a complete brief. Be concrete and
-sourced. If you cannot find the company, return what you can with empty
-arrays for unknown fields.
-
-Three opening questions are required and must be specific to what you found,
-not generic.
+Then call `submit_company_basics` exactly once with:
+- `company_category` chosen from the enum (use 'Other' only if none fit;
+  for 'Other', state the specific reason in `category_rationale`).
+- `pain_points`: likely concerns framed against d-volt's offering, tied to
+  something concrete you observed.
+- `opening_questions`: exactly THREE short questions specific to what you
+  found, not generic.
 """
 
 
-def _parse_brief(final, fallback_one_liner: str) -> Optional[CompanyResearch]:
-    """Pull the submit_research_brief tool_use input out of a Message."""
-    for block in final.content:
+def _news_prompt(card: ExtractedCard) -> str:
+    return f"""\
+You are gathering recent news for a sales pre-meeting brief.
+
+Contact info:
+{_contact_lines(card)}
+
+GOAL: Find news from roughly the last 90 days about the company. Run up to
+2 web searches. Then call `submit_recent_news` exactly once with one-sentence
+bullets in `recent_news`. Empty list is fine if you find nothing relevant.
+"""
+
+
+def _contact_prompt(card: ExtractedCard) -> str:
+    return f"""\
+You are verifying a sales contact's LinkedIn profile and current title.
+
+Contact info:
+{_contact_lines(card)}
+
+GOAL:
+- Find this PERSON's PERSONAL LinkedIn profile (linkedin.com/in/<handle>).
+  Search 'site:linkedin.com/in <name> <company>'. Do NOT return the
+  company's LinkedIn page. Leave `contact_linkedin` blank unless you can
+  confidently match this specific person.
+- Find their current title (LinkedIn or the company team/about page).
+  Put it in `contact_title_verified` (may confirm or correct the card).
+
+Run up to 2 web searches, then call `submit_contact_info` exactly once.
+"""
+
+
+# ---- Sub-call execution helpers -----------------------------------------
+
+def _parse_tool_input(final: Any, tool_name: str) -> Optional[dict]:
+    for block in getattr(final, "content", []) or []:
         if (
             getattr(block, "type", None) == "tool_use"
-            and getattr(block, "name", None) == "submit_research_brief"
+            and getattr(block, "name", None) == tool_name
         ):
             try:
-                return CompanyResearch.model_validate(block.input)
+                return dict(block.input)
             except Exception:  # noqa: BLE001
-                log.exception("submit_research_brief input failed schema validation")
-                return CompanyResearch(
-                    one_liner="Research completed but the brief failed validation.",
-                    recent_news=[json.dumps(block.input)[:500]],
-                )
-    text = "\n".join(
-        getattr(b, "text", "") for b in final.content if getattr(b, "type", None) == "text"
-    ).strip()
-    if text:
-        return CompanyResearch(one_liner=text.splitlines()[0])
+                log.exception("failed to parse %s input", tool_name)
+                return None
     return None
 
 
-def _research_no_search(client, prompt: str):
-    """Fallback: produce a brief without web search. Returns (research, cost_usd)."""
-    fallback_prompt = (
-        prompt
-        + "\n\nIMPORTANT: web_search is unavailable. Produce the brief from "
-        "the contact info alone. Qualify any guesses with 'Likely…' or "
-        "'Possibly…'. Three opening questions are still required."
-    )
-    final = stream_to_terminal(
-        client,
-        label="research-fallback",
-        model=MODEL,
-        max_tokens=2048,
-        system=SYSTEM,
-        tools=[SUBMIT_TOOL],
-        tool_choice={"type": "tool", "name": "submit_research_brief"},
-        messages=[{"role": "user", "content": fallback_prompt}],
-    )
-    cost = anthropic_cost(getattr(final, "usage", None), MODEL)
-    parsed = _parse_brief(final, fallback_one_liner="No brief returned.") or CompanyResearch(
-        one_liner="No structured brief returned by the model."
-    )
-    return parsed, cost
-
-
-def research_company(
-    card: ExtractedCard,
-    company_context: Optional[str] = None,
-):
-    """Run the research agent and return ``(CompanyResearch, cost_usd)``.
-
-    Tries web_search first, falls back to a search-less brief on any error.
-    """
-    if not card.company:
-        return CompanyResearch(
-            one_liner="No company name was extracted from the card; research skipped."
-        ), 0.0
-
-    client = make_client(timeout=180.0)
-    prompt = _build_prompt(
-        card,
-        company_context or os.getenv("COMPANY_CONTEXT", DEFAULT_COMPANY_CONTEXT),
-    )
-
-    # ---- attempt 1: with web_search --------------------------------------
-    cost = 0.0
+def _call_with_search(
+    client, *, label: str, prompt: str, max_uses: int,
+    submit_tool: dict, tool_name: str,
+) -> Tuple[dict, float]:
+    """Run one fan-out call (web_search + structured submit). Returns (data, cost)."""
     try:
+        # cache_control is set on the LAST tool — Anthropic caches the entire
+        # tools block + the system prefix above it.
+        cached_submit = {**submit_tool, "cache_control": CACHE}
         final = stream_to_terminal(
             client,
-            label="research",
+            label=label,
             model=MODEL,
-            max_tokens=4096,
-            system=SYSTEM,
-            tools=[WEB_SEARCH_TOOL, SUBMIT_TOOL],
+            max_tokens=2048,
+            system=_system_block(),
+            tools=[_ws_tool(max_uses), cached_submit],
             messages=[{"role": "user", "content": prompt}],
         )
         cost = anthropic_cost(
             getattr(final, "usage", None), MODEL,
             web_search_calls=count_web_search_calls(final),
         )
+        data = _parse_tool_input(final, tool_name) or {}
+        return data, cost
     except APIStatusError as exc:
-        log.warning(
-            "research with web_search failed (status=%s, message=%s); "
-            "falling back to search-less brief.",
-            getattr(exc, "status_code", "?"),
-            str(exc)[:200],
+        log.warning("[%s] APIStatusError %s — %s",
+                    label, getattr(exc, "status_code", "?"), str(exc)[:200])
+        return {}, 0.0
+    except Exception:  # noqa: BLE001
+        log.exception("[%s] sub-call hit unexpected error", label)
+        return {}, 0.0
+
+
+def _research_no_search(client, card: ExtractedCard, company_context: str):
+    """Fallback when web_search is unavailable (or the parallel calls all failed).
+    Returns ``(CompanyResearch, cost_usd)``. No search; uses the model's general
+    knowledge alone."""
+    prompt = (
+        _basics_prompt(card, company_context)
+        + "\n\nIMPORTANT: web_search is unavailable for this run. Produce "
+        "the brief from the contact info alone. Qualify guesses with "
+        "'Likely…' or 'Possibly…'. Three opening questions are still required."
+    )
+    try:
+        final = stream_to_terminal(
+            client, label="research-fallback",
+            model=MODEL, max_tokens=2048,
+            system=_system_block(),
+            tools=[{**SUBMIT_BASICS, "cache_control": CACHE}],
+            tool_choice={"type": "tool", "name": "submit_company_basics"},
+            messages=[{"role": "user", "content": prompt}],
         )
-        try:
-            return _research_no_search(client, prompt)
-        except Exception as inner:  # noqa: BLE001
-            log.exception("fallback research also failed")
-            return CompanyResearch(
-                one_liner=f"Research failed: {inner.__class__.__name__}: {inner}"
-            ), 0.0
+        cost = anthropic_cost(getattr(final, "usage", None), MODEL)
+        data = _parse_tool_input(final, "submit_company_basics") or {}
     except Exception as exc:  # noqa: BLE001
-        log.exception("research call hit an unexpected error")
+        log.exception("fallback research failed")
         return CompanyResearch(
             one_liner=f"Research failed: {exc.__class__.__name__}: {exc}"
         ), 0.0
+    return _merge_into_research(basics=data, news={}, contact={}), cost
 
-    parsed = _parse_brief(final, fallback_one_liner="No brief returned.")
-    if parsed is not None:
-        return parsed, cost
 
-    # The with-search call returned no submit_research_brief — try fallback.
-    log.warning("with-search call did not produce a brief; running fallback.")
-    try:
-        fb_parsed, fb_cost = _research_no_search(client, prompt)
-        return fb_parsed, cost + fb_cost
-    except Exception as exc:  # noqa: BLE001
-        log.exception("fallback research failed after empty primary response")
+def _merge_into_research(
+    *, basics: dict, news: dict, contact: dict,
+) -> CompanyResearch:
+    """Combine the three sub-call dicts into a single CompanyResearch."""
+    sources = (
+        (basics.get("sources")  or []) +
+        (news.get("sources")    or []) +
+        (contact.get("sources") or [])
+    )
+    # Dedup while preserving order.
+    seen = set()
+    uniq_sources = []
+    for s in sources:
+        if s not in seen:
+            seen.add(s)
+            uniq_sources.append(s)
+
+    return CompanyResearch(
+        contact_linkedin=contact.get("contact_linkedin") or None,
+        contact_title_verified=contact.get("contact_title_verified") or None,
+        company_website=basics.get("company_website") or None,
+        one_liner=basics.get("one_liner") or None,
+        company_category=basics.get("company_category") or None,
+        category_rationale=basics.get("category_rationale") or None,
+        industry=basics.get("industry") or None,
+        estimated_size=basics.get("estimated_size") or None,
+        products=basics.get("products") or [],
+        recent_news=news.get("recent_news") or [],
+        pain_points=basics.get("pain_points") or [],
+        opening_questions=basics.get("opening_questions") or [],
+        sources=uniq_sources,
+    )
+
+
+# ---- Public entrypoint ---------------------------------------------------
+
+def research_company(
+    card: ExtractedCard,
+    company_context: Optional[str] = None,
+):
+    """Run the research agent (3-way fan-out) and return ``(CompanyResearch, cost_usd)``.
+
+    Three concurrent web_search calls (basics / news / contact) collapse the
+    sequential ~40s wall time into ~max(call) ≈ 12-15s. Cost is roughly
+    the same as the old single-call path.
+    """
+    if not card.company:
         return CompanyResearch(
-            one_liner=f"Research failed: {exc.__class__.__name__}: {exc}"
-        ), cost
+            one_liner="No company name was extracted from the card; research skipped."
+        ), 0.0
+
+    client = make_client(timeout=120.0)
+    company_context = company_context or os.getenv(
+        "COMPANY_CONTEXT", DEFAULT_COMPANY_CONTEXT,
+    )
+
+    log.info("research: starting 3-way fan-out for company=%r", card.company)
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_basics  = ex.submit(
+            _call_with_search, client,
+            label="research-basics",
+            prompt=_basics_prompt(card, company_context),
+            max_uses=3,
+            submit_tool=SUBMIT_BASICS,
+            tool_name="submit_company_basics",
+        )
+        f_news    = ex.submit(
+            _call_with_search, client,
+            label="research-news",
+            prompt=_news_prompt(card),
+            max_uses=2,
+            submit_tool=SUBMIT_NEWS,
+            tool_name="submit_recent_news",
+        )
+        f_contact = ex.submit(
+            _call_with_search, client,
+            label="research-contact",
+            prompt=_contact_prompt(card),
+            max_uses=2,
+            submit_tool=SUBMIT_CONTACT,
+            tool_name="submit_contact_info",
+        )
+        basics,  basics_cost  = f_basics.result()
+        news,    news_cost    = f_news.result()
+        contact, contact_cost = f_contact.result()
+
+    total_cost = basics_cost + news_cost + contact_cost
+    merged = _merge_into_research(basics=basics, news=news, contact=contact)
+
+    # Last-resort fallback: if every parallel call came back empty (e.g., the
+    # account doesn't have web_search at all), run a single search-less call.
+    if not merged.one_liner:
+        log.warning("all three parallel research calls returned empty; "
+                    "running search-less fallback")
+        fb_research, fb_cost = _research_no_search(client, card, company_context)
+        return fb_research, total_cost + fb_cost
+
+    log.info(
+        "research: fan-out done. cost = basics $%.4f + news $%.4f + contact $%.4f = $%.4f",
+        basics_cost, news_cost, contact_cost, total_cost,
+    )
+    return merged, total_cost
