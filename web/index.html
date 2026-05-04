@@ -888,22 +888,71 @@
   .field a:hover { text-decoration: underline; }
   .empty { color: var(--soft); font-style: italic; }
 
+  /* Field value flex container so the copy button can sit on the right
+     without breaking text wrapping or overflow. */
+  .field-val {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .field-val .field-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .field-val .copy-btn { margin-left: auto; }
+
+  /* Inline copy button — small, subtle, becomes a checkmark for ~1.4s. */
+  .copy-btn {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition), color var(--transition);
+    flex-shrink: 0;
+    min-height: 0;
+    box-shadow: none;
+  }
+  .copy-btn:hover { background: var(--surface-2); color: var(--accent); box-shadow: none; }
+  .copy-btn .copy-ico,
+  .copy-btn .copy-ico-done { width: 14px; height: 14px; display: block; }
+  .copy-btn .copy-ico-done { display: none; color: var(--ok); }
+  .copy-btn.copied { color: var(--ok); }
+  .copy-btn.copied .copy-ico      { display: none; }
+  .copy-btn.copied .copy-ico-done { display: block; }
+  @media (max-width: 640px) {
+    .copy-btn { width: 32px; height: 32px; }
+    .copy-btn .copy-ico, .copy-btn .copy-ico-done { width: 16px; height: 16px; }
+  }
+
   ul.bullets { margin: 4px 0 0 0; padding-left: 0; list-style: none; }
   ul.bullets li {
     margin: 6px 0;
     padding-left: 18px;
     position: relative;
     line-height: 1.55;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
   }
   ul.bullets li::before {
     content: "";
     position: absolute;
-    left: 4px; top: 9px;
+    left: 4px; top: 11px;
     width: 5px; height: 5px;
     border-radius: 50%;
     background: var(--accent);
     opacity: 0.6;
   }
+  ul.bullets li .bullet-text { flex: 1; min-width: 0; }
+  ul.bullets li .copy-btn { margin-top: -3px; }
 
   .pdf-row { margin-top: 16px; display: flex; gap: 10px; }
   .pdf-row a { flex: 1; display: block; text-align: center; text-decoration: none; }
@@ -1418,6 +1467,35 @@ function pdfButtonsHtml(pdfPath, filenameStem) {
     </div>`;
 }
 
+// Delegated handler for inline "copy to clipboard" buttons.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".copy-btn");
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();   // don't toggle the parent history-item etc.
+  const text = btn.dataset.copyText || "";
+  if (!text) return;
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch {
+    // Fallback for older browsers / non-secure contexts: hidden textarea trick.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch {}
+    ta.remove();
+  }
+  if (ok) {
+    btn.classList.add("copied");
+    setTimeout(() => btn.classList.remove("copied"), 1400);
+  } else {
+    btn.title = "Copy failed — long-press to copy manually";
+  }
+});
+
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest("[data-pdf-action]");
   if (!btn || btn.disabled) return;
@@ -1889,19 +1967,38 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ---- result rendering -----------------------------------------------------
 
+/** Small inline button that copies a string to the clipboard. The actual
+ *  click is handled by a single delegated handler at the bottom of the
+ *  script (see "copy-btn" handler) so dynamically-rendered HTML works
+ *  without re-binding listeners. */
+function copyBtnHtml(text) {
+  const safe = escapeHtml(String(text ?? ""));
+  return `<button type="button" class="copy-btn" data-copy-text="${safe}" title="Copy" aria-label="Copy">
+    <svg class="copy-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="9" y="9" width="13" height="13" rx="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+    <svg class="copy-ico-done" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  </button>`;
+}
+
 function renderField(label, value) {
   if (value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) {
     return `<div class="field"><b>${label}</b><span class="empty">—</span></div>`;
   }
-  const text = Array.isArray(value) ? value.join(", ") : value;
-  return `<div class="field"><b>${label}</b><span>${escapeHtml(text)}</span></div>`;
+  const text = Array.isArray(value) ? value.join(", ") : String(value);
+  return `<div class="field"><b>${label}</b><span class="field-val"><span class="field-text">${escapeHtml(text)}</span>${copyBtnHtml(text)}</span></div>`;
 }
 
 function renderLinkField(label, url) {
   if (!url) return `<div class="field"><b>${label}</b><span class="empty">—</span></div>`;
   const href = normalizeUrl(url);
   const safe = escapeHtml(url);
-  return `<div class="field"><b>${label}</b><span><a href="${escapeHtml(href)}" target="_blank" rel="noopener">${safe}</a></span></div>`;
+  return `<div class="field"><b>${label}</b><span class="field-val"><a class="field-text" href="${escapeHtml(href)}" target="_blank" rel="noopener">${safe}</a>${copyBtnHtml(url)}</span></div>`;
 }
 
 function normalizeUrl(u) {
@@ -1922,7 +2019,10 @@ function titleDisplay(cardTitle, verified) {
 
 function renderBullets(items) {
   if (!items || !items.length) return `<div class="empty">—</div>`;
-  return `<ul class="bullets">${items.map(i => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
+  return `<ul class="bullets">${items.map(i => {
+    const t = String(i ?? "");
+    return `<li><span class="bullet-text">${escapeHtml(t)}</span>${copyBtnHtml(t)}</li>`;
+  }).join("")}</ul>`;
 }
 
 function categoryClass(cat) {
