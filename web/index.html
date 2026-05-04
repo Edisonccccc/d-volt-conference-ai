@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>D-Volt Conference AI Assistant — Card Tester</title>
-<meta name="x-app-version" content="v0.4.0" />
+<meta name="x-app-version" content="v0.5.0" />
 <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)" />
 <style>
@@ -1147,7 +1147,7 @@
     </span>
     <div>
       <h1>D-Volt Conference AI</h1>
-      <div class="sub">Sales meeting copilot · v0.4.0</div>
+      <div class="sub">Sales meeting copilot · v0.5.0</div>
     </div>
   </div>
   <div class="user-menu" id="userMenu">
@@ -1699,6 +1699,7 @@ function setStage(key, state, metaText) {
   const el = stageEl(key);
   if (!el) return;
   const wasActive = el.classList.contains("active");
+  const wasDone   = el.classList.contains("done");
   el.classList.remove("active", "done", "failed");
   if (state) el.classList.add(state);
   if (state === "active") {
@@ -1707,8 +1708,14 @@ function setStage(key, state, metaText) {
     if (!stageStart[key]) stageStart[key] = performance.now();
     if (!wasActive) metaEl(key).textContent = metaText || "running…";
   } else if (state === "done") {
-    const ms = stageStart[key] ? Math.round(performance.now() - stageStart[key]) : null;
-    metaEl(key).textContent = ms != null ? `${(ms/1000).toFixed(1)}s` : (metaText || "");
+    // Only stamp the duration on the FIRST transition into "done".
+    // When status="ready" arrives the polling handler re-marks every stage
+    // done; without this guard, an already-finished stage would have its
+    // meta clobbered with `now - stageStart`, which spans subsequent stages.
+    if (!wasDone) {
+      const ms = stageStart[key] ? Math.round(performance.now() - stageStart[key]) : null;
+      metaEl(key).textContent = ms != null ? `${(ms/1000).toFixed(1)}s` : (metaText || "");
+    }
   } else if (state === "failed") {
     metaEl(key).textContent = metaText || "failed";
   } else {
