@@ -1498,6 +1498,27 @@
 
     <div class="status" id="convStatus"></div>
 
+    <div id="convProgress" hidden>
+      <div class="progressbar show"><span></span></div>
+      <ol class="stages" id="convStages">
+        <li class="stage" data-ckey="upload">
+          <span class="dot"></span>
+          <span class="label">Upload audio</span>
+          <span class="meta" id="cmeta-upload"></span>
+        </li>
+        <li class="stage" data-ckey="transcribe">
+          <span class="dot"></span>
+          <span class="label">Transcribe with Whisper</span>
+          <span class="meta" id="cmeta-transcribe"></span>
+        </li>
+        <li class="stage" data-ckey="summarize">
+          <span class="dot"></span>
+          <span class="label">Summarize with Claude</span>
+          <span class="meta" id="cmeta-summarize"></span>
+        </li>
+      </ol>
+    </div>
+
     <div class="transcript" id="transcript"></div>
 
     <div id="summary"></div>
@@ -2275,6 +2296,8 @@ const convPanel = document.getElementById("convPanel");
 const convStatus = document.getElementById("convStatus");
 const transcriptEl = document.getElementById("transcript");
 const summaryEl = document.getElementById("summary");
+const convProgressEl = document.getElementById("convProgress");
+const convStagesEl   = document.getElementById("convStages");
 
 let mediaRecorder = null;
 let mediaStream = null;
@@ -2282,6 +2305,108 @@ let audioChunks = [];
 let convId = null;
 let recStartMs = 0;
 let recTimer = null;
+
+// Conversation processing-stage state (mirrors the card flow's stages widget).
+let convStageStart = {};
+let convTickerKey = null;
+let convTimer = null;
+
+function convStageEl(key) { return convStagesEl.querySelector(`.stage[data-ckey="${key}"]`); }
+function convMetaEl(key)  { return document.getElementById("cmeta-" + key); }
+
+function setConvStage(key, state, metaText) {
+  const el = convStageEl(key);
+  if (!el) return;
+  const wasActive = el.classList.contains("active");
+  const wasDone   = el.classList.contains("done");
+  el.classList.remove("active", "done", "failed");
+  if (state) el.classList.add(state);
+  if (state === "active") {
+    if (!convStageStart[key]) convStageStart[key] = performance.now();
+    if (!wasActive) convMetaEl(key).textContent = metaText || "running…";
+  } else if (state === "done") {
+    if (!wasDone) {
+      const ms = convStageStart[key] ? Math.round(performance.now() - convStageStart[key]) : null;
+      convMetaEl(key).textContent = ms != null ? `${(ms/1000).toFixed(1)}s` : (metaText || "");
+    }
+  } else if (state === "failed") {
+    convMetaEl(key).textContent = metaText || "failed";
+  } else {
+    convMetaEl(key).textContent = "";
+  }
+}
+
+const CONV_STAGE_ORDER = ["upload", "transcribe", "summarize"];
+function resetConvStages() {
+  CONV_STAGE_ORDER.forEach(k => setConvStage(k, null));
+  if (convTimer) { clearInterval(convTimer); convTimer = null; }
+  convStageStart = {};
+  convTickerKey = null;
+}
+function startConvTicker(key) {
+  if (convTickerKey === key && convTimer) return;
+  if (convTimer) clearInterval(convTimer);
+  convTickerKey = key;
+  const tick = () => {
+    const t = convStageStart[key];
+    if (!t) return;
+    const s = ((performance.now() - t) / 1000).toFixed(0);
+    convMetaEl(key).textContent = `${s}s`;
+  };
+  tick();
+  convTimer = setInterval(tick, 1000);
+}
+function showConvProgress(on) { convProgressEl.hidden = !on; }
+
+/** Translate a backend status into the stages widget. */
+function applyConvStatusToStages(status) {
+  switch (status) {
+    case "uploading":
+      setConvStage("upload", "active");
+      startConvTicker("upload");
+      break;
+    case "transcribing":
+      if (!convStageEl("upload").classList.contains("done")) setConvStage("upload", "done");
+      setConvStage("transcribe", "active");
+      startConvTicker("transcribe");
+      break;
+    case "summarizing":
+      if (!convStageEl("upload").classList.contains("done"))     setConvStage("upload", "done");
+      if (!convStageEl("transcribe").classList.contains("done")) setConvStage("transcribe", "done");
+      setConvStage("summarize", "active");
+      startConvTicker("summarize");
+      break;
+    case "ready":
+      CONV_STAGE_ORDER.forEach(k => setConvStage(k, "done"));
+      if (convTimer) { clearInterval(convTimer); convTimer = null; }
+      break;
+    case "error": {
+      const cur = convStagesEl.querySelector(".stage.active");
+      if (cur) setConvStage(cur.dataset.ckey, "failed");
+      if (convTimer) { clearInterval(convTimer); convTimer = null; }
+      break;
+    }
+  }
+}
+
+function summarySkeletonHtml() {
+  // Shown while the backend is generating the summary, so the user has
+  // some sense of where the data will land.
+  return `
+    <div class="summary-block">
+      <h3>Summary</h3>
+      <div class="skeleton long"></div>
+      <div class="skeleton long"></div>
+      <h3>Key topics</h3>
+      <div class="skeleton long"></div>
+      <div class="skeleton short"></div>
+      <h3>Customer concerns</h3>
+      <div class="skeleton long"></div>
+      <h3>Next steps</h3>
+      <div class="skeleton long"></div>
+      <div class="skeleton short"></div>
+    </div>`;
+}
 
 function setConvStatus(msg, isErr=false) {
   convStatus.textContent = msg || "";
@@ -2412,6 +2537,8 @@ startBtn.addEventListener("click", async () => {
   transcriptEl.innerHTML = "";
   summaryEl.innerHTML = "";
   setConvStatus("");
+  resetConvStages();
+  showConvProgress(false);
 
   // Start backend session first so we have an ID to attach.
   try {
@@ -2448,6 +2575,13 @@ stopBtn.addEventListener("click", async () => {
   startBtn.style.display = "";
   setConvStatus("Stopping recording…");
 
+  // Activate the processing-stages widget + skeleton placeholders so the
+  // user has visible feedback during the upload/transcribe/summarize wait.
+  showConvProgress(true);
+  setConvStage("upload", "active");
+  startConvTicker("upload");
+  summaryEl.innerHTML = summarySkeletonHtml();
+
   const blob = await stopRecording();
   transcriptEl.innerHTML = `<div style="text-align:center; padding:14px; color:var(--muted);">Audio captured (${blob ? (blob.size/1024/1024).toFixed(2) : "?"} MB). Sending to Whisper…</div>`;
 
@@ -2472,10 +2606,14 @@ stopBtn.addEventListener("click", async () => {
     });
     if (!res.ok) throw new Error("Upload failed: " + res.status + " " + (await res.text()));
     setConvStatus("Audio uploaded. Transcribing with Whisper…");
+    setConvStage("upload", "done");           // mark upload stage complete
     pollConversation(convId);
   } catch (err) {
     convChip.textContent = "error";
     setConvStatus(err.message || String(err), true);
+    setConvStage("upload", "failed", "upload failed");
+    showConvProgress(false);
+    summaryEl.innerHTML = "";
   }
 });
 
@@ -2494,6 +2632,7 @@ async function pollConversation(id) {
       continue;
     }
     convChip.textContent = data.status;
+    applyConvStatusToStages(data.status);
 
     if (data.transcript && !renderedTranscript) {
       transcriptEl.innerHTML = escapeHtml(data.transcript);
@@ -2509,18 +2648,22 @@ async function pollConversation(id) {
 
     if (data.status === "ready") {
       setConvStatus("");
+      showConvProgress(false);
       if (data.transcript && !renderedTranscript) {
         transcriptEl.innerHTML = escapeHtml(data.transcript);
       }
-      renderSummary(data);
+      renderSummary(data);   // replaces the skeleton with real content
       return;
     }
     if (data.status === "error") {
       setConvStatus(data.error || "Pipeline failed.", true);
+      showConvProgress(false);
+      summaryEl.innerHTML = "";
       return;
     }
   }
   setConvStatus("Timed out waiting for summary.", true);
+  showConvProgress(false);
 }
 
 function renderSummary(data) {
