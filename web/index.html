@@ -397,6 +397,46 @@
     padding: 28px 12px;
     font-size: 14px;
   }
+
+  /* Conversations grouped by card */
+  .history-group {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    overflow: hidden;
+  }
+  .history-group-header {
+    padding: 10px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .history-group-header .hg-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ink);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .history-group-header .hg-count {
+    color: var(--muted);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  /* Items inside a group are flush with no inter-item border-radius. */
+  .history-group .history-item {
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
+  }
+  .history-group .history-item:last-child { border-bottom: 0; }
+  .history-group .history-item.expanded { background: var(--surface); box-shadow: none; }
+  .history-group .history-item.expanded .history-summary { background: var(--accent-soft); }
   @media (max-width: 640px) {
     .history-summary .h-meta { display: none; }
     .history-detail .field { grid-template-columns: 1fr; gap: 2px; }
@@ -2527,16 +2567,15 @@ async function loadHistory() {
 }
 
 function renderHistoryList() {
-  const items = historyState.section === "cards"
+  const isCards = historyState.section === "cards";
+  const items = isCards
     ? (historyState.cards || [])
     : (historyState.conversations || []);
 
-  // Filter client-side. For cards, match name/company. For conversations,
-  // match customer name/company in the list payload (transcript content
-  // requires a refetch, intentionally not done here).
+  // Filter client-side.
   const q = historyState.searchQuery;
   const filtered = !q ? items : items.filter(it => {
-    const hay = historyState.section === "cards"
+    const hay = isCards
       ? `${it.name || ""} ${it.company || ""} ${it.id || ""}`
       : `${it.customer_name || ""} ${it.customer_company || ""} ${it.id || ""}`;
     return hay.toLowerCase().includes(q);
@@ -2549,29 +2588,111 @@ function renderHistoryList() {
     return;
   }
 
-  historyListEl.innerHTML = filtered.map(it => {
-    const isExpanded = historyState.expandedId === it.id;
-    const summaryHtml = historyState.section === "cards"
-      ? renderCardSummary(it) : renderConversationSummary(it);
-    return `
-      <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${escapeHtml(it.id)}">
-        <div class="history-summary">
-          <div class="h-main">${summaryHtml}</div>
-          <span class="h-meta">${escapeHtml(fmtRelative(it.created_at || it.started_at))}</span>
-          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
-        ${isExpanded ? `<div class="history-detail" id="hd-${escapeHtml(it.id)}">${
-          renderHistoryDetailLoading()}</div>` : ""}
-      </div>`;
-  }).join("");
+  historyListEl.innerHTML = isCards
+    ? filtered.map(it => renderHistoryRow(it, renderCardSummary(it))).join("")
+    : renderConversationsGrouped(filtered);
 
   // If something is expanded, fetch + render its full detail asynchronously.
   if (historyState.expandedId) {
     loadAndRenderDetail(historyState.expandedId);
   }
+}
+
+function renderHistoryRow(it, summaryHtml) {
+  const isExpanded = historyState.expandedId === it.id;
+  const dateField = it.created_at || it.started_at;
+  return `
+    <div class="history-item ${isExpanded ? "expanded" : ""}" data-id="${escapeHtml(it.id)}">
+      <div class="history-summary">
+        <div class="h-main">${summaryHtml}</div>
+        <span class="h-meta">${escapeHtml(fmtRelative(dateField))}</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      ${isExpanded ? `<div class="history-detail" id="hd-${escapeHtml(it.id)}">${
+        renderHistoryDetailLoading()}</div>` : ""}
+    </div>`;
+}
+
+function ordinalize(n) {
+  // 1st, 2nd, 3rd, 4th, 11th, 21st, 22nd, ...
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function fmtDuration(startIso, endIso) {
+  if (!startIso || !endIso) return "";
+  const sec = (new Date(endIso) - new Date(startIso)) / 1000;
+  if (!isFinite(sec) || sec < 0) return "";
+  if (sec < 60)   return Math.round(sec) + "s";
+  if (sec < 3600) return Math.round(sec / 60) + "m";
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return m === 0 ? h + "h" : `${h}h ${m}m`;
+}
+
+function renderConversationsGrouped(items) {
+  // Bucket by card_id. Unlinked rows fall under a sentinel "__unlinked__".
+  const groups = new Map();
+  for (const c of items) {
+    const key = c.card_id || "__unlinked__";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+
+  // Number conversations within each group based on chronological order.
+  // Earliest = #1, "1st conversation".
+  for (const list of groups.values()) {
+    const asc = [...list].sort((a, b) =>
+      (a.started_at || "").localeCompare(b.started_at || ""));
+    asc.forEach((c, i) => { c._order = i + 1; });
+  }
+
+  // Build group entries; display newest-first within each, and order groups
+  // by most-recent conversation desc (active customers float to the top).
+  const arr = Array.from(groups.entries()).map(([key, list]) => {
+    const sorted = [...list].sort((a, b) =>
+      (b.started_at || "").localeCompare(a.started_at || ""));
+    return {
+      cardId: key === "__unlinked__" ? null : key,
+      items: sorted,
+      mostRecent: sorted[0]?.started_at || "",
+    };
+  });
+  arr.sort((a, b) => {
+    // Linked groups float above unlinked, then by recency.
+    if (!a.cardId && b.cardId) return 1;
+    if (a.cardId && !b.cardId) return -1;
+    return (b.mostRecent || "").localeCompare(a.mostRecent || "");
+  });
+
+  return arr.map(g => {
+    const sample = g.items[0];
+    const headerTitle = g.cardId
+      ? `${sample.customer_name || "(unknown contact)"} · ${sample.customer_company || "—"}`
+      : "Unlinked conversations";
+    const headerCount = `${g.items.length} conversation${g.items.length === 1 ? "" : "s"}`;
+    return `
+      <div class="history-group">
+        <div class="history-group-header">
+          <div class="hg-title">${escapeHtml(headerTitle)}</div>
+          <div class="hg-count">${escapeHtml(headerCount)}</div>
+        </div>
+        ${g.items.map(c =>
+          renderHistoryRow(c, renderConversationSummaryWithOrder(c))
+        ).join("")}
+      </div>`;
+  }).join("");
+}
+
+function renderConversationSummaryWithOrder(c) {
+  const dur = fmtDuration(c.started_at, c.ended_at);
+  const orderLabel = c._order ? `${ordinalize(c._order)} conversation` : "Conversation";
+  const head = `${escapeHtml(orderLabel)}${dur ? " · " + escapeHtml(dur) : ""}`;
+  return `<div class="h-title">${head}</div><div class="h-sub">Status: <b>${escapeHtml(c.status)}</b></div>`;
 }
 
 function renderCardSummary(c) {
