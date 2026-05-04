@@ -554,6 +554,16 @@
   }
   .users-table .role-pill.manager { background: var(--accent-soft); color: var(--accent); }
   .users-table .role-pill.rep     { background: var(--surface-2);   color: var(--muted); }
+  .users-table .company-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
   .users-table .row-del-btn {
     background: transparent;
     color: var(--err);
@@ -1305,6 +1315,8 @@
     <form id="authForm" autocomplete="on">
       <input type="text" id="authName" name="name" placeholder="Your name"
              autocomplete="name" hidden />
+      <input type="text" id="authCompany" name="company" placeholder="Your company (e.g. d-volt)"
+             autocomplete="organization" hidden />
       <input type="email" id="authEmail" name="email" placeholder="Email"
              autocomplete="email" required />
       <input type="password" id="authPassword" name="password" placeholder="Password"
@@ -1730,6 +1742,7 @@ const authForm     = document.getElementById("authForm");
 const authEmail    = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
 const authName     = document.getElementById("authName");
+const authCompany  = document.getElementById("authCompany");
 const authSubmit   = document.getElementById("authSubmit");
 const authSubmitLabel = document.getElementById("authSubmitLabel");
 const authStatus   = document.getElementById("authStatus");
@@ -1744,6 +1757,8 @@ function applyAuthMode() {
     authSubmitLabel.textContent = "Sign up";
     authPassword.setAttribute("autocomplete", "new-password");
     authName.hidden = false;
+    authCompany.hidden = false;
+    authCompany.required = true;
     authToggle.innerHTML = "Already have an account? <b>Sign in</b>";
   } else {
     authTitle.textContent = "Sign in";
@@ -1751,6 +1766,8 @@ function applyAuthMode() {
     authSubmitLabel.textContent = "Sign in";
     authPassword.setAttribute("autocomplete", "current-password");
     authName.hidden = true;
+    authCompany.hidden = true;
+    authCompany.required = false;
     authToggle.innerHTML = "Don't have an account? <b>Sign up</b>";
   }
   setAuthStatus("");
@@ -1773,7 +1790,12 @@ authForm.addEventListener("submit", async (e) => {
   authSubmit.disabled = true;
   const path = authMode === "register" ? "/auth/register" : "/auth/login";
   const body = authMode === "register"
-    ? { email: authEmail.value.trim(), password: authPassword.value, name: authName.value.trim() || null }
+    ? {
+        email: authEmail.value.trim(),
+        password: authPassword.value,
+        name: authName.value.trim() || null,
+        company: authCompany.value.trim(),
+      }
     : { email: authEmail.value.trim(), password: authPassword.value };
   try {
     const res = await fetch(API_BASE + path, {
@@ -2835,6 +2857,7 @@ function renderUserRows(users, team) {
         <td>
           <div style="font-weight: 600;">${escapeHtml(u.name || "(no name)")}</div>
           <div style="color: var(--muted); font-size: 12.5px; word-break: break-all;">${escapeHtml(u.email)}${isMe ? " · you" : ""}</div>
+          ${u.company ? `<div><span class="company-pill">${escapeHtml(u.company)}</span></div>` : ""}
         </td>
         <td><span class="role-pill ${u.role}">${escapeHtml(u.role)}</span></td>
         <td style="font-variant-numeric: tabular-nums;">${u.cards}</td>

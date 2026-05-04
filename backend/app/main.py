@@ -477,6 +477,7 @@ def register(payload: UserCreate) -> AuthResponse:
         password_hash=pw_hash,
         name=payload.name,
         role=role,
+        company=(payload.company or "").strip() or None,
     )
     return AuthResponse(token=make_jwt(user.id), user=user)
 

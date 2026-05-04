@@ -118,6 +118,11 @@ def init_db() -> None:
             conn.execute("ALTER TABLE cards ADD COLUMN cost_stt REAL")
         if not _has_col("conversations", "cost_stt"):
             conn.execute("ALTER TABLE conversations ADD COLUMN cost_stt REAL")
+        # Multi-tenant prep: each user belongs to a company. Existing rows
+        # default to 'd-volt' for backwards compatibility.
+        if not _has_col("users", "company"):
+            conn.execute("ALTER TABLE users ADD COLUMN company TEXT")
+            conn.execute("UPDATE users SET company = 'd-volt' WHERE company IS NULL")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
@@ -384,11 +389,14 @@ def list_conversations(
 
 
 def _row_to_user(row: sqlite3.Row) -> User:
+    keys = row.keys()
+    company = row["company"] if "company" in keys else None
     return User(
         id=row["id"],
         email=row["email"],
         name=row["name"],
         role=row["role"],
+        company=company,
         created_at=row["created_at"],
         last_login=row["last_login"],
     )
@@ -399,19 +407,21 @@ def create_user(
     password_hash: str,
     name: Optional[str] = None,
     role: UserRole = "rep",
+    company: Optional[str] = None,
 ) -> User:
     user_id = uuid.uuid4().hex
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connect() as conn:
         conn.execute(
-            "INSERT INTO users (id, email, password_hash, name, role, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, email.lower().strip(), password_hash, name, role, now),
+            "INSERT INTO users (id, email, password_hash, name, role, "
+            "created_at, company) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, email.lower().strip(), password_hash, name, role, now,
+             (company or "").strip() or None),
         )
         conn.commit()
     return User(
         id=user_id, email=email, name=name, role=role,
-        created_at=now, last_login=None,
+        company=company, created_at=now, last_login=None,
     )
 
 
@@ -543,7 +553,7 @@ def compute_team_stats(period: str = "week") -> dict:
 
         # ---- user list ----
         user_rows = conn.execute(
-            "SELECT id, email, name, role, created_at, last_login "
+            "SELECT id, email, name, role, company, created_at, last_login "
             "FROM users ORDER BY created_at ASC"
         ).fetchall()
 
@@ -576,6 +586,7 @@ def compute_team_stats(period: str = "week") -> dict:
             "email":      u["email"],
             "name":       u["name"],
             "role":       u["role"],
+            "company":    u["company"] if "company" in u.keys() else None,
             "created_at": u["created_at"],
             "last_login": u["last_login"],
             "last_active": last_active,

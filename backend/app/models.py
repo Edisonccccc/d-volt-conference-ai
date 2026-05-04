@@ -179,6 +179,7 @@ class User(BaseModel):
     email: EmailStr
     name: Optional[str] = None
     role: UserRole = "rep"
+    company: Optional[str] = None
     created_at: str
     last_login: Optional[str] = None
 
@@ -187,6 +188,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=200)
     name: Optional[str] = Field(None, max_length=120)
+    company: str = Field(min_length=1, max_length=120)
 
 
 class UserLogin(BaseModel):
