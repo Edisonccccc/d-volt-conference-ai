@@ -112,6 +112,12 @@ def init_db() -> None:
             conn.execute("ALTER TABLE cards ADD COLUMN cost_usd REAL")
         if not _has_col("conversations", "cost_usd"):
             conn.execute("ALTER TABLE conversations ADD COLUMN cost_usd REAL")
+        # cost_stt = the Whisper portion of the total. cost_usd - cost_stt
+        # = the LLM portion (Claude). Cards never have STT so it's always 0.
+        if not _has_col("cards", "cost_stt"):
+            conn.execute("ALTER TABLE cards ADD COLUMN cost_stt REAL")
+        if not _has_col("conversations", "cost_stt"):
+            conn.execute("ALTER TABLE conversations ADD COLUMN cost_stt REAL")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
@@ -204,21 +210,25 @@ def update_research(card_id: str, research: CompanyResearch) -> None:
         conn.commit()
 
 
-def add_card_cost(card_id: str, delta_usd: float) -> None:
-    """Increment the card's cost_usd by `delta_usd`, treating NULL as 0."""
+def add_card_cost(card_id: str, delta_usd: float, *, stt_delta: float = 0.0) -> None:
+    """Increment a card's cost_usd by delta_usd and cost_stt by stt_delta."""
     with _lock, _connect() as conn:
         conn.execute(
-            "UPDATE cards SET cost_usd = COALESCE(cost_usd, 0) + ? WHERE id = ?",
-            (float(delta_usd or 0), card_id),
+            "UPDATE cards SET cost_usd = COALESCE(cost_usd, 0) + ?, "
+            "cost_stt = COALESCE(cost_stt, 0) + ? WHERE id = ?",
+            (float(delta_usd or 0), float(stt_delta or 0), card_id),
         )
         conn.commit()
 
 
-def add_conversation_cost(conv_id: str, delta_usd: float) -> None:
+def add_conversation_cost(
+    conv_id: str, delta_usd: float, *, stt_delta: float = 0.0,
+) -> None:
     with _lock, _connect() as conn:
         conn.execute(
-            "UPDATE conversations SET cost_usd = COALESCE(cost_usd, 0) + ? WHERE id = ?",
-            (float(delta_usd or 0), conv_id),
+            "UPDATE conversations SET cost_usd = COALESCE(cost_usd, 0) + ?, "
+            "cost_stt = COALESCE(cost_stt, 0) + ? WHERE id = ?",
+            (float(delta_usd or 0), float(stt_delta or 0), conv_id),
         )
         conn.commit()
 
@@ -454,3 +464,144 @@ def delete_user(user_id: str) -> bool:
 def count_users() -> int:
     with _lock, _connect() as conn:
         return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# Admin stats — team & per-user activity + spend
+# ---------------------------------------------------------------------------
+
+
+def _period_start_iso(period: str) -> Optional[str]:
+    """Return an ISO timestamp marking the start of the given period (UTC),
+    or None for 'all'. Periods accepted: today | week | month | all."""
+    p = (period or "week").lower()
+    now = datetime.now(timezone.utc)
+    if p == "all":
+        return None
+    if p == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif p == "month":
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        # week (default) — Monday 00:00 UTC of the current week
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = start.fromordinal(start.toordinal() - start.weekday())
+        start = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
+    return start.isoformat()
+
+
+def compute_team_stats(period: str = "week") -> dict:
+    """Return team-wide totals + per-user breakdown for the given period.
+
+    Periods: today | week (default) | month | all.
+    """
+    from_iso = _period_start_iso(period)
+    with _lock, _connect() as conn:
+        # ---- per-user roll-up of cards ----
+        if from_iso:
+            cards_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS n, "
+                "  COALESCE(SUM(cost_usd), 0) AS spend, "
+                "  COALESCE(SUM(cost_stt), 0) AS spend_stt, "
+                "  MAX(created_at) AS last "
+                "FROM cards WHERE user_id IS NOT NULL AND created_at >= ? "
+                "GROUP BY user_id",
+                (from_iso,),
+            ).fetchall()
+        else:
+            cards_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS n, "
+                "  COALESCE(SUM(cost_usd), 0) AS spend, "
+                "  COALESCE(SUM(cost_stt), 0) AS spend_stt, "
+                "  MAX(created_at) AS last "
+                "FROM cards WHERE user_id IS NOT NULL "
+                "GROUP BY user_id"
+            ).fetchall()
+        cards_by_user = {r["user_id"]: r for r in cards_rows}
+
+        # ---- per-user roll-up of conversations ----
+        if from_iso:
+            conv_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS n, "
+                "  COALESCE(SUM(cost_usd), 0) AS spend, "
+                "  COALESCE(SUM(cost_stt), 0) AS spend_stt, "
+                "  MAX(started_at) AS last "
+                "FROM conversations WHERE user_id IS NOT NULL AND started_at >= ? "
+                "GROUP BY user_id",
+                (from_iso,),
+            ).fetchall()
+        else:
+            conv_rows = conn.execute(
+                "SELECT user_id, COUNT(*) AS n, "
+                "  COALESCE(SUM(cost_usd), 0) AS spend, "
+                "  COALESCE(SUM(cost_stt), 0) AS spend_stt, "
+                "  MAX(started_at) AS last "
+                "FROM conversations WHERE user_id IS NOT NULL "
+                "GROUP BY user_id"
+            ).fetchall()
+        conv_by_user = {r["user_id"]: r for r in conv_rows}
+
+        # ---- user list ----
+        user_rows = conn.execute(
+            "SELECT id, email, name, role, created_at, last_login "
+            "FROM users ORDER BY created_at ASC"
+        ).fetchall()
+
+    per_user = []
+    team_cards = 0
+    team_convs = 0
+    team_spend = 0.0
+    team_spend_stt = 0.0
+    active_count = 0
+
+    for u in user_rows:
+        uid = u["id"]
+        cr = cards_by_user.get(uid)
+        cv = conv_by_user.get(uid)
+        n_cards = cr["n"] if cr else 0
+        n_convs = cv["n"] if cv else 0
+        spend   = (cr["spend"]     if cr else 0) + (cv["spend"]     if cv else 0)
+        spd_stt = (cr["spend_stt"] if cr else 0) + (cv["spend_stt"] if cv else 0)
+        # Most recent activity = max of last card and last conversation in period.
+        last_active = max(
+            (cr["last"] if cr else "") or "",
+            (cv["last"] if cv else "") or "",
+        ) or None
+
+        if (n_cards + n_convs) > 0:
+            active_count += 1
+
+        per_user.append({
+            "id":         uid,
+            "email":      u["email"],
+            "name":       u["name"],
+            "role":       u["role"],
+            "created_at": u["created_at"],
+            "last_login": u["last_login"],
+            "last_active": last_active,
+            "cards":      n_cards,
+            "conversations": n_convs,
+            "spend_usd":     round(spend, 6),
+            "spend_stt_usd": round(spd_stt, 6),
+            "spend_llm_usd": round(spend - spd_stt, 6),
+        })
+
+        team_cards     += n_cards
+        team_convs     += n_convs
+        team_spend     += spend
+        team_spend_stt += spd_stt
+
+    return {
+        "period": (period or "week").lower(),
+        "from":   from_iso,
+        "team": {
+            "total_users":   len(user_rows),
+            "active_users":  active_count,
+            "cards":         team_cards,
+            "conversations": team_convs,
+            "spend_usd":     round(team_spend, 6),
+            "spend_stt_usd": round(team_spend_stt, 6),
+            "spend_llm_usd": round(team_spend - team_spend_stt, 6),
+        },
+        "users": per_user,
+    }

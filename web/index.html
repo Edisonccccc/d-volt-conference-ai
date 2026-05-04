@@ -469,6 +469,60 @@
     .history-detail .field { grid-template-columns: 1fr; gap: 2px; }
   }
 
+  /* ----- admin dashboard -------------------------------------------- */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin: 6px 0 16px;
+  }
+  @media (max-width: 640px) {
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+  }
+  .kpi {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    padding: 12px 14px;
+  }
+  .kpi .kpi-label {
+    font-size: 11.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .kpi .kpi-value {
+    font-size: 22px;
+    font-weight: 700;
+    margin-top: 4px;
+    letter-spacing: -0.015em;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi .kpi-sub {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Period toggle reuses the .subtabs pill style */
+  .period-toggle { margin: 0 0 12px; }
+
+  /* Spend cell breakdown (LLM vs STT) */
+  .spend-cell .spend-total { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .spend-cell .spend-break {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .users-table tr.anomaly td:first-child {
+    box-shadow: inset 3px 0 0 #f59e0b;
+  }
+  .users-table tr.anomaly { background: rgba(245, 158, 11, 0.06); }
+
   /* ----- admin (users) table ---------------------------------------- */
   .users-table {
     width: 100%;
@@ -1467,10 +1521,25 @@
 
   <div class="tab-content admin-only" id="tab-admin" role="tabpanel" aria-labelledby="tab-admin-btn" hidden>
   <section class="panel">
-    <h2><span class="step">A</span>Team members<span class="chip" id="adminCountChip">0</span></h2>
-    <p style="color:var(--muted); margin: 4px 0 12px;">
-      Sales reps see only their own data. Managers see everyone's. Reps register
-      themselves at <code>/app/</code> if their email is on the allowlist.
+    <h2><span class="step">A</span>Team dashboard<span class="chip" id="adminPeriodChip">this week</span></h2>
+
+    <div class="subtabs period-toggle" role="tablist">
+      <button class="subtab"        data-period="today" id="period-today">Today</button>
+      <button class="subtab active" data-period="week"  id="period-week">This week</button>
+      <button class="subtab"        data-period="month" id="period-month">This month</button>
+      <button class="subtab"        data-period="all"   id="period-all">All time</button>
+    </div>
+
+    <div class="kpi-strip" id="kpiStrip">
+      <div class="kpi"><div class="kpi-label">Total spend</div><div class="kpi-value" id="kpiSpend">—</div><div class="kpi-sub" id="kpiSpendSub">&nbsp;</div></div>
+      <div class="kpi"><div class="kpi-label">Cards scanned</div><div class="kpi-value" id="kpiCards">—</div></div>
+      <div class="kpi"><div class="kpi-label">Conversations</div><div class="kpi-value" id="kpiConvs">—</div></div>
+      <div class="kpi"><div class="kpi-label">Active reps</div><div class="kpi-value" id="kpiActive">—</div><div class="kpi-sub" id="kpiActiveSub">&nbsp;</div></div>
+    </div>
+
+    <p style="color:var(--muted); margin: 4px 0 12px; font-size: 13px;">
+      Reps register themselves at <code>/app/</code> if their email is on the allowlist.
+      Rows highlighted amber are spending more than 2× the team average for the period.
     </p>
     <div id="adminStatus" class="status"></div>
     <div style="overflow-x:auto;">
@@ -1479,13 +1548,15 @@
           <tr>
             <th>Member</th>
             <th>Role</th>
-            <th>Created</th>
-            <th>Last login</th>
+            <th>Cards</th>
+            <th>Conv.</th>
+            <th>Spend</th>
+            <th>Last active</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="usersTbody">
-          <tr><td colspan="5" style="color:var(--muted);">Loading…</td></tr>
+          <tr><td colspan="7" style="color:var(--muted);">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -1784,7 +1855,7 @@ function setActiveTab(name, { fromHashChange = false } = {}) {
   if (!fromHashChange) {
     history.replaceState(null, "", "#" + name);
   }
-  if (name === "admin") loadAdminUsers();
+  if (name === "admin") loadAdminStats();
   if (name === "history") loadHistory();
   // Keep top of new view in view; iOS Safari can leave you mid-scroll otherwise.
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2484,11 +2555,21 @@ function renderSummary(data) {
 }
 
 // ===========================================================================
-// Admin tab — manager-only user list
+// Admin tab — manager-only team dashboard
 // ===========================================================================
 const usersTbody     = document.getElementById("usersTbody");
-const adminCountChip = document.getElementById("adminCountChip");
+const adminPeriodChip= document.getElementById("adminPeriodChip");
 const adminStatus    = document.getElementById("adminStatus");
+const kpiSpendEl     = document.getElementById("kpiSpend");
+const kpiSpendSubEl  = document.getElementById("kpiSpendSub");
+const kpiCardsEl     = document.getElementById("kpiCards");
+const kpiConvsEl     = document.getElementById("kpiConvs");
+const kpiActiveEl    = document.getElementById("kpiActive");
+const kpiActiveSubEl = document.getElementById("kpiActiveSub");
+
+let adminPeriod = "week";   // today | week | month | all
+
+const PERIOD_LABELS = { today: "today", week: "this week", month: "this month", all: "all time" };
 
 function fmtDate(s) {
   if (!s) return "—";
@@ -2502,33 +2583,81 @@ function setAdminStatus(msg, isErr=false) {
   adminStatus.classList.toggle("err", isErr);
 }
 
-async function loadAdminUsers() {
+// Period toggle pills
+document.querySelectorAll(".period-toggle [data-period]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    adminPeriod = btn.dataset.period;
+    document.querySelectorAll(".period-toggle [data-period]").forEach(b => {
+      b.classList.toggle("active", b.dataset.period === adminPeriod);
+    });
+    loadAdminStats();
+  });
+});
+
+async function loadAdminStats() {
   if (authUser?.role !== "manager") return;
   setAdminStatus("");
+  adminPeriodChip.textContent = PERIOD_LABELS[adminPeriod] || adminPeriod;
   try {
-    const r = await authFetch("/admin/users");
-    if (!r.ok) throw new Error("Failed to load users (" + r.status + ")");
-    const users = await r.json();
-    adminCountChip.textContent = users.length;
-    usersTbody.innerHTML = users.map(u => {
-      const isMe = u.id === authUser.id;
-      return `
-        <tr data-uid="${escapeHtml(u.id)}">
-          <td>
-            <div style="font-weight: 600;">${escapeHtml(u.name || "(no name)")}</div>
-            <div style="color: var(--muted); font-size: 12.5px; word-break: break-all;">${escapeHtml(u.email)}${isMe ? " · you" : ""}</div>
-          </td>
-          <td><span class="role-pill ${u.role}">${escapeHtml(u.role)}</span></td>
-          <td>${fmtDate(u.created_at)}</td>
-          <td>${fmtDate(u.last_login)}</td>
-          <td style="text-align: right;">
-            <button class="row-del-btn" ${isMe ? "disabled title='Cannot delete yourself'" : ""}>Remove</button>
-          </td>
-        </tr>`;
-    }).join("");
+    const r = await authFetch("/admin/stats?period=" + encodeURIComponent(adminPeriod));
+    if (!r.ok) throw new Error("Failed to load stats (" + r.status + ")");
+    const data = await r.json();
+    renderKpis(data.team);
+    renderUserRows(data.users, data.team);
   } catch (err) {
     setAdminStatus(err.message || String(err), true);
   }
+}
+
+function renderKpis(t) {
+  kpiSpendEl.textContent = fmtCost(t.spend_usd) || "$0.00";
+  // Sub-line: split LLM vs STT.
+  const llm = fmtCost(t.spend_llm_usd) || "$0.00";
+  const stt = fmtCost(t.spend_stt_usd) || "$0.00";
+  kpiSpendSubEl.textContent = `LLM ${llm} · STT ${stt}`;
+  kpiCardsEl.textContent  = t.cards;
+  kpiConvsEl.textContent  = t.conversations;
+  kpiActiveEl.textContent = t.active_users;
+  kpiActiveSubEl.textContent = `of ${t.total_users} on the team`;
+}
+
+function renderUserRows(users, team) {
+  // Anomaly threshold: 2× the team average spend (excluding zeros).
+  const spenders = users.filter(u => (u.spend_usd || 0) > 0);
+  const avg = spenders.length
+    ? spenders.reduce((s, u) => s + u.spend_usd, 0) / spenders.length
+    : 0;
+  const threshold = avg > 0 ? avg * 2 : Infinity;
+
+  usersTbody.innerHTML = users.map(u => {
+    const isMe = u.id === authUser.id;
+    const isAnomaly = u.spend_usd > threshold && spenders.length >= 2;
+    const spendStr = u.spend_usd > 0 ? fmtCost(u.spend_usd) : "—";
+    const llmStr = u.spend_llm_usd > 0 ? fmtCost(u.spend_llm_usd) : null;
+    const sttStr = u.spend_stt_usd > 0 ? fmtCost(u.spend_stt_usd) : null;
+    const breakdownStr = (llmStr || sttStr)
+      ? `LLM ${llmStr || "—"} · STT ${sttStr || "—"}`
+      : "";
+    return `
+      <tr data-uid="${escapeHtml(u.id)}" class="${isAnomaly ? "anomaly" : ""}"
+          ${isAnomaly ? `title="Spend is more than 2× the team average for ${escapeHtml(PERIOD_LABELS[adminPeriod])}."` : ""}>
+        <td>
+          <div style="font-weight: 600;">${escapeHtml(u.name || "(no name)")}</div>
+          <div style="color: var(--muted); font-size: 12.5px; word-break: break-all;">${escapeHtml(u.email)}${isMe ? " · you" : ""}</div>
+        </td>
+        <td><span class="role-pill ${u.role}">${escapeHtml(u.role)}</span></td>
+        <td style="font-variant-numeric: tabular-nums;">${u.cards}</td>
+        <td style="font-variant-numeric: tabular-nums;">${u.conversations}</td>
+        <td class="spend-cell">
+          <span class="spend-total">${escapeHtml(spendStr)}</span>
+          ${breakdownStr ? `<span class="spend-break">${escapeHtml(breakdownStr)}</span>` : ""}
+        </td>
+        <td>${fmtDate(u.last_active || u.last_login)}</td>
+        <td style="text-align: right;">
+          <button class="row-del-btn" ${isMe ? "disabled title='Cannot delete yourself'" : ""}>Remove</button>
+        </td>
+      </tr>`;
+  }).join("");
 }
 
 // ===========================================================================
@@ -2866,7 +2995,7 @@ usersTbody.addEventListener("click", async (e) => {
   try {
     const r = await authFetch("/admin/users/" + encodeURIComponent(uid), { method: "DELETE" });
     if (!r.ok) throw new Error("Delete failed (" + r.status + ")");
-    loadAdminUsers();
+    loadAdminStats();
   } catch (err) {
     setAdminStatus(err.message || String(err), true);
     btn.disabled = false; btn.textContent = "Remove";

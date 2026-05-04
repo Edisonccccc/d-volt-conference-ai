@@ -316,7 +316,9 @@ def _run_audio_pipeline(conv_id: str) -> None:
         storage.update_conversation_status(conv_id, "transcribing")
         transcript, transcribe_cost = transcribe_audio(rec.audio_path)
         storage.update_conversation_transcript(conv_id, transcript)
-        storage.add_conversation_cost(conv_id, transcribe_cost)
+        # The whole transcribe_cost is STT; track it both ways so admin dashboard
+        # can break down LLM vs Whisper.
+        storage.add_conversation_cost(conv_id, transcribe_cost, stt_delta=transcribe_cost)
         log.info("conv %s whisper cost: $%.4f", conv_id, transcribe_cost)
         _summarize_and_render(conv_id)
     except Exception as exc:  # noqa: BLE001
@@ -507,6 +509,16 @@ def logout(user: User = Depends(current_user)) -> dict:
 def admin_list_users(user: User = Depends(current_user)) -> list[User]:
     require_manager(user)
     return storage.list_users(limit=500)
+
+
+@app.get("/admin/stats")
+def admin_stats(period: str = "week", user: User = Depends(current_user)) -> dict:
+    """Manager dashboard: team totals + per-user activity & spend.
+    Periods: today | week (default) | month | all."""
+    require_manager(user)
+    if period not in ("today", "week", "month", "all"):
+        raise HTTPException(status_code=400, detail="Invalid period")
+    return storage.compute_team_stats(period=period)
 
 
 @app.delete("/admin/users/{user_id}")
