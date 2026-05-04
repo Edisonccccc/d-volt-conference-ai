@@ -98,6 +98,8 @@
   body.unauthenticated main { display: none; }
   body.authenticated #authScreen { display: none; }
   body.role-rep .admin-only { display: none !important; }
+  body.role-rep .cost-pill,
+  body.role-rep .history-cost-summary { display: none !important; }
 
   /* ----- auth overlay ----------------------------------------------- */
   #authScreen {
@@ -397,6 +399,31 @@
     padding: 28px 12px;
     font-size: 14px;
   }
+
+  /* Cost pill — only meaningful to managers; we hide it for reps via
+     `body.role-rep .cost-pill { display: none }` in the auth-gates block. */
+  .cost-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-2);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    margin-left: 6px;
+  }
+  .history-group-header .cost-pill { font-size: 12px; }
+  .history-summary .cost-pill { flex-shrink: 0; }
+  .history-cost-summary {
+    margin: 0 0 12px;
+    padding: 10px 14px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-input);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .history-cost-summary b { color: var(--ink); font-variant-numeric: tabular-nums; }
 
   /* Conversations grouped by card */
   .history-group {
@@ -2588,9 +2615,23 @@ function renderHistoryList() {
     return;
   }
 
-  historyListEl.innerHTML = isCards
+  // Manager-only total at the top: sum of cost_usd across the filtered list.
+  // CSS hides .history-cost-summary for reps, so this is also safe if the
+  // backend ever forgets to strip cost_usd.
+  let totalsHtml = "";
+  if (authUser?.role === "manager") {
+    const total = filtered.reduce(
+      (acc, x) => acc + (typeof x.cost_usd === "number" ? x.cost_usd : 0), 0
+    );
+    if (total > 0) {
+      const label = isCards ? "card scans" : "conversations";
+      totalsHtml = `<div class="history-cost-summary">Vendor cost across ${filtered.length} ${label}: <b>${fmtCost(total)}</b></div>`;
+    }
+  }
+
+  historyListEl.innerHTML = totalsHtml + (isCards
     ? filtered.map(it => renderHistoryRow(it, renderCardSummary(it))).join("")
-    : renderConversationsGrouped(filtered);
+    : renderConversationsGrouped(filtered));
 
   // If something is expanded, fetch + render its full detail asynchronously.
   if (historyState.expandedId) {
@@ -2621,6 +2662,19 @@ function ordinalize(n) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function fmtCost(usd) {
+  // Render small amounts in cents for readability, dollars when ≥ $1.
+  if (usd == null || isNaN(usd)) return null;
+  if (usd >= 1)        return "$" + usd.toFixed(2);
+  if (usd >= 0.01)     return (usd * 100).toFixed(1) + "¢";
+  if (usd >  0)        return (usd * 100).toFixed(2) + "¢";
+  return "$0.00";
+}
+function costPillHtml(usd) {
+  const v = fmtCost(usd);
+  return v ? `<span class="cost-pill" title="Vendor cost">${escapeHtml(v)}</span>` : "";
 }
 
 function fmtDuration(startIso, endIso) {
@@ -2675,11 +2729,14 @@ function renderConversationsGrouped(items) {
       ? `${sample.customer_name || "(unknown contact)"} · ${sample.customer_company || "—"}`
       : "Unlinked conversations";
     const headerCount = `${g.items.length} conversation${g.items.length === 1 ? "" : "s"}`;
+    const groupTotal = g.items.reduce(
+      (acc, c) => acc + (typeof c.cost_usd === "number" ? c.cost_usd : 0), 0
+    );
     return `
       <div class="history-group">
         <div class="history-group-header">
           <div class="hg-title">${escapeHtml(headerTitle)}</div>
-          <div class="hg-count">${escapeHtml(headerCount)}</div>
+          <div class="hg-count">${escapeHtml(headerCount)}${costPillHtml(groupTotal || null)}</div>
         </div>
         ${g.items.map(c =>
           renderHistoryRow(c, renderConversationSummaryWithOrder(c))
@@ -2692,12 +2749,12 @@ function renderConversationSummaryWithOrder(c) {
   const dur = fmtDuration(c.started_at, c.ended_at);
   const orderLabel = c._order ? `${ordinalize(c._order)} conversation` : "Conversation";
   const head = `${escapeHtml(orderLabel)}${dur ? " · " + escapeHtml(dur) : ""}`;
-  return `<div class="h-title">${head}</div><div class="h-sub">Status: <b>${escapeHtml(c.status)}</b></div>`;
+  return `<div class="h-title">${head}</div><div class="h-sub">Status: <b>${escapeHtml(c.status)}</b>${costPillHtml(c.cost_usd)}</div>`;
 }
 
 function renderCardSummary(c) {
   const title = `${escapeHtml(c.name || "(unknown name)")} · ${escapeHtml(c.company || "—")}`;
-  const sub = `Status: <b>${escapeHtml(c.status)}</b>`;
+  const sub = `Status: <b>${escapeHtml(c.status)}</b>${costPillHtml(c.cost_usd)}`;
   return `<div class="h-title">${title}</div><div class="h-sub">${sub}</div>`;
 }
 
@@ -2705,7 +2762,7 @@ function renderConversationSummary(c) {
   const customer = (c.customer_name || c.customer_company)
     ? `${escapeHtml(c.customer_name || "—")} · ${escapeHtml(c.customer_company || "—")}`
     : "Unlinked conversation";
-  const sub = `Status: <b>${escapeHtml(c.status)}</b>`;
+  const sub = `Status: <b>${escapeHtml(c.status)}</b>${costPillHtml(c.cost_usd)}`;
   return `<div class="h-title">${customer}</div><div class="h-sub">${sub}</div>`;
 }
 

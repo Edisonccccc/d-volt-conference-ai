@@ -13,6 +13,7 @@ from typing import Optional
 
 from anthropic import APIStatusError
 
+from .costing import anthropic_cost, count_web_search_calls
 from .llm import make_client, stream_to_terminal
 from .models import CompanyResearch, ExtractedCard
 
@@ -232,8 +233,8 @@ def _parse_brief(final, fallback_one_liner: str) -> Optional[CompanyResearch]:
     return None
 
 
-def _research_no_search(client, prompt: str) -> CompanyResearch:
-    """Fallback: produce a brief without web search."""
+def _research_no_search(client, prompt: str):
+    """Fallback: produce a brief without web search. Returns (research, cost_usd)."""
     fallback_prompt = (
         prompt
         + "\n\nIMPORTANT: web_search is unavailable. Produce the brief from "
@@ -250,23 +251,25 @@ def _research_no_search(client, prompt: str) -> CompanyResearch:
         tool_choice={"type": "tool", "name": "submit_research_brief"},
         messages=[{"role": "user", "content": fallback_prompt}],
     )
-    return _parse_brief(final, fallback_one_liner="No brief returned.") or CompanyResearch(
+    cost = anthropic_cost(getattr(final, "usage", None), MODEL)
+    parsed = _parse_brief(final, fallback_one_liner="No brief returned.") or CompanyResearch(
         one_liner="No structured brief returned by the model."
     )
+    return parsed, cost
 
 
 def research_company(
     card: ExtractedCard,
     company_context: Optional[str] = None,
-) -> CompanyResearch:
-    """Run the research agent and return a structured brief.
+):
+    """Run the research agent and return ``(CompanyResearch, cost_usd)``.
 
     Tries web_search first, falls back to a search-less brief on any error.
     """
     if not card.company:
         return CompanyResearch(
             one_liner="No company name was extracted from the card; research skipped."
-        )
+        ), 0.0
 
     client = make_client(timeout=180.0)
     prompt = _build_prompt(
@@ -275,6 +278,7 @@ def research_company(
     )
 
     # ---- attempt 1: with web_search --------------------------------------
+    cost = 0.0
     try:
         final = stream_to_terminal(
             client,
@@ -284,6 +288,10 @@ def research_company(
             system=SYSTEM,
             tools=[WEB_SEARCH_TOOL, SUBMIT_TOOL],
             messages=[{"role": "user", "content": prompt}],
+        )
+        cost = anthropic_cost(
+            getattr(final, "usage", None), MODEL,
+            web_search_calls=count_web_search_calls(final),
         )
     except APIStatusError as exc:
         log.warning(
@@ -298,23 +306,24 @@ def research_company(
             log.exception("fallback research also failed")
             return CompanyResearch(
                 one_liner=f"Research failed: {inner.__class__.__name__}: {inner}"
-            )
+            ), 0.0
     except Exception as exc:  # noqa: BLE001
         log.exception("research call hit an unexpected error")
         return CompanyResearch(
             one_liner=f"Research failed: {exc.__class__.__name__}: {exc}"
-        )
+        ), 0.0
 
     parsed = _parse_brief(final, fallback_one_liner="No brief returned.")
     if parsed is not None:
-        return parsed
+        return parsed, cost
 
     # The with-search call returned no submit_research_brief — try fallback.
     log.warning("with-search call did not produce a brief; running fallback.")
     try:
-        return _research_no_search(client, prompt)
+        fb_parsed, fb_cost = _research_no_search(client, prompt)
+        return fb_parsed, cost + fb_cost
     except Exception as exc:  # noqa: BLE001
         log.exception("fallback research failed after empty primary response")
         return CompanyResearch(
             one_liner=f"Research failed: {exc.__class__.__name__}: {exc}"
-        )
+        ), cost

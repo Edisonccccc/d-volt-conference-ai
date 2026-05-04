@@ -12,6 +12,7 @@ import mimetypes
 import os
 from pathlib import Path
 
+from .costing import anthropic_cost
 from .llm import make_client, stream_to_terminal
 from .models import ExtractedCard
 
@@ -65,10 +66,10 @@ def _image_block(photo_path: str) -> dict:
     }
 
 
-def extract_card(photo_path: str) -> ExtractedCard:
+def extract_card(photo_path: str):
     """Extract contact fields from a business card photo.
 
-    Returns a populated ``ExtractedCard``. Missing fields are left as None / [].
+    Returns ``(ExtractedCard, cost_usd)``. Missing fields are left as None / [].
     Raises whatever the SDK raises on a hard failure so the pipeline can
     record it.
     """
@@ -106,9 +107,11 @@ def extract_card(photo_path: str) -> ExtractedCard:
         ],
     )
 
+    cost = anthropic_cost(getattr(final, "usage", None), MODEL)
+
     for block in final.content:
         if getattr(block, "type", None) == "tool_use" and block.name == "record_card_fields":
-            return ExtractedCard.model_validate(block.input)
+            return ExtractedCard.model_validate(block.input), cost
 
     log.warning("extract: no tool_use block found in final message; returning empty.")
-    return ExtractedCard(notes="Model did not return structured fields.")
+    return ExtractedCard(notes="Model did not return structured fields."), cost

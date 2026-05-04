@@ -36,20 +36,23 @@ def run_pipeline(card_id: str) -> None:
     try:
         storage.update_status(card_id, "extracting")
         log.info("[%s] step 1/3: extract", card_id)
-        extracted = extract_card(record.photo_path)
+        extracted, extract_cost = extract_card(record.photo_path)
         storage.update_extracted(card_id, extracted)
+        storage.add_card_cost(card_id, extract_cost)
         log.info(
-            "[%s] extracted: name=%r company=%r",
-            card_id, extracted.name, extracted.company,
+            "[%s] extracted: name=%r company=%r (cost $%.4f)",
+            card_id, extracted.name, extracted.company, extract_cost,
         )
 
         storage.update_status(card_id, "researching")
         log.info("[%s] step 2/3: research", card_id)
-        research = research_company(extracted)
+        research, research_cost = research_company(extracted)
         storage.update_research(card_id, research)
+        storage.add_card_cost(card_id, research_cost)
         log.info(
-            "[%s] research one_liner=%r (sources=%d)",
+            "[%s] research one_liner=%r (sources=%d, cost $%.4f, total $%.4f)",
             card_id, research.one_liner, len(research.sources),
+            research_cost, extract_cost + research_cost,
         )
 
         log.info("[%s] step 3/3: render PDF", card_id)

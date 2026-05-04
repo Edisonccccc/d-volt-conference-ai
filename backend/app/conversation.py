@@ -11,6 +11,7 @@ import logging
 import os
 from typing import Optional
 
+from .costing import anthropic_cost
 from .llm import make_client, stream_to_terminal
 from .models import CardRecord, ConversationSummary
 
@@ -165,15 +166,16 @@ empty):
 
 def summarize_conversation(
     transcript: str, card: Optional[CardRecord] = None
-) -> ConversationSummary:
-    """Summarize a sales conversation. Returns a ConversationSummary.
+):
+    """Summarize a sales conversation.
 
-    Falls back to a one-line error message in the summary if Claude fails.
+    Returns ``(ConversationSummary, cost_usd)``. Falls back to a one-line
+    error message in the summary if Claude fails.
     """
     if not transcript or not transcript.strip():
         return ConversationSummary(
             summary="No transcript was captured for this conversation."
-        )
+        ), 0.0
 
     client = make_client(timeout=120.0)
     prompt = _build_prompt(transcript, card)
@@ -193,7 +195,9 @@ def summarize_conversation(
         log.exception("summarize_conversation failed")
         return ConversationSummary(
             summary=f"Summarization failed: {exc.__class__.__name__}: {exc}"
-        )
+        ), 0.0
+
+    cost = anthropic_cost(getattr(final, "usage", None), MODEL)
 
     for block in final.content:
         if (
@@ -201,17 +205,17 @@ def summarize_conversation(
             and getattr(block, "name", None) == "submit_conversation_summary"
         ):
             try:
-                return ConversationSummary.model_validate(block.input)
+                return ConversationSummary.model_validate(block.input), cost
             except Exception:  # noqa: BLE001
                 log.exception("summary input failed schema validation")
                 return ConversationSummary(
                     summary="Summary returned but failed schema validation.",
                     key_topics=[json.dumps(block.input)[:500]],
-                )
+                ), cost
 
     text = "\n".join(
         getattr(b, "text", "") for b in final.content if getattr(b, "type", None) == "text"
     ).strip()
     return ConversationSummary(
         summary=text.splitlines()[0] if text else "No summary returned."
-    )
+    ), cost

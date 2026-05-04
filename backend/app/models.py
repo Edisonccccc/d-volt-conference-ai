@@ -90,6 +90,10 @@ class CardRecord(BaseModel):
     research: Optional[CompanyResearch] = None
     error: Optional[str] = None
     user_id: Optional[str] = None  # owner; nullable on legacy rows
+    cost_usd: Optional[float] = Field(
+        None,
+        description="Sum of vendor charges to produce this card (extraction + research). Manager-only via API.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +159,10 @@ class ConversationRecord(BaseModel):
     summary: Optional[ConversationSummary] = None
     error: Optional[str] = None
     user_id: Optional[str] = None  # owner; nullable on legacy rows
+    cost_usd: Optional[float] = Field(
+        None,
+        description="Sum of vendor charges to produce this conversation (Whisper + Claude summary). Manager-only via API.",
+    )
 
 
 # ---------------------------------------------------------------------------

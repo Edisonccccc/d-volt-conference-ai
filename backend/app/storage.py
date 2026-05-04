@@ -108,6 +108,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE cards ADD COLUMN user_id TEXT")
         if not _has_col("conversations", "user_id"):
             conn.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT")
+        if not _has_col("cards", "cost_usd"):
+            conn.execute("ALTER TABLE cards ADD COLUMN cost_usd REAL")
+        if not _has_col("conversations", "cost_usd"):
+            conn.execute("ALTER TABLE conversations ADD COLUMN cost_usd REAL")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
@@ -138,7 +142,9 @@ def report_dir() -> Path:
 
 
 def _row_to_record(row: sqlite3.Row) -> CardRecord:
-    user_id = row["user_id"] if "user_id" in row.keys() else None
+    keys = row.keys()
+    user_id  = row["user_id"]  if "user_id"  in keys else None
+    cost_usd = row["cost_usd"] if "cost_usd" in keys else None
     return CardRecord(
         id=row["id"],
         status=row["status"],
@@ -152,6 +158,7 @@ def _row_to_record(row: sqlite3.Row) -> CardRecord:
         else None,
         error=row["error"],
         user_id=user_id,
+        cost_usd=cost_usd,
     )
 
 
@@ -197,6 +204,25 @@ def update_research(card_id: str, research: CompanyResearch) -> None:
         conn.commit()
 
 
+def add_card_cost(card_id: str, delta_usd: float) -> None:
+    """Increment the card's cost_usd by `delta_usd`, treating NULL as 0."""
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE cards SET cost_usd = COALESCE(cost_usd, 0) + ? WHERE id = ?",
+            (float(delta_usd or 0), card_id),
+        )
+        conn.commit()
+
+
+def add_conversation_cost(conv_id: str, delta_usd: float) -> None:
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE conversations SET cost_usd = COALESCE(cost_usd, 0) + ? WHERE id = ?",
+            (float(delta_usd or 0), conv_id),
+        )
+        conn.commit()
+
+
 def get_card(card_id: str, user_id: Optional[str] = None) -> Optional[CardRecord]:
     """Fetch one card. If user_id is provided, the card must belong to that
     user. Pass user_id=None for unscoped access (used by manager/admin).
@@ -234,7 +260,8 @@ def list_cards(limit: int = 50, user_id: Optional[str] = None) -> List[CardRecor
 def _row_to_conversation(row: sqlite3.Row) -> ConversationRecord:
     keys = row.keys()
     audio_path = row["audio_path"] if "audio_path" in keys else None
-    user_id = row["user_id"] if "user_id" in keys else None
+    user_id    = row["user_id"]    if "user_id"    in keys else None
+    cost_usd   = row["cost_usd"]   if "cost_usd"   in keys else None
     return ConversationRecord(
         id=row["id"],
         status=row["status"],
@@ -248,6 +275,7 @@ def _row_to_conversation(row: sqlite3.Row) -> ConversationRecord:
         else None,
         error=row["error"],
         user_id=user_id,
+        cost_usd=cost_usd,
     )
 
 

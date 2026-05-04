@@ -169,6 +169,9 @@ def get_card_endpoint(card_id: str, user: User = Depends(current_user)) -> dict:
     payload["pdf_url"] = f"/cards/{card_id}/report.pdf" if has_pdf else None
     # Don't leak server-local paths.
     payload.pop("photo_path", None)
+    # Costs are manager-only.
+    if user.role != "manager":
+        payload.pop("cost_usd", None)
     return payload
 
 
@@ -235,8 +238,9 @@ def email_report(
 def list_cards_endpoint(
     limit: int = 25, user: User = Depends(current_user)
 ) -> list[dict]:
-    return [
-        {
+    out = []
+    for r in storage.list_cards(limit=limit, user_id=_scope_for(user)):
+        row = {
             "id": r.id,
             "status": r.status,
             "created_at": r.created_at,
@@ -244,8 +248,10 @@ def list_cards_endpoint(
             "company": r.extracted.company if r.extracted else None,
             "user_id": r.user_id,
         }
-        for r in storage.list_cards(limit=limit, user_id=_scope_for(user))
-    ]
+        if user.role == "manager":
+            row["cost_usd"] = r.cost_usd
+        out.append(row)
+    return out
 
 
 # ===========================================================================
@@ -275,8 +281,10 @@ def _summarize_and_render(conv_id: str) -> None:
     card = storage.get_card(rec.card_id) if rec.card_id else None
 
     storage.update_conversation_status(conv_id, "summarizing")
-    summary = summarize_conversation(rec.transcript or "", card=card)
+    summary, summary_cost = summarize_conversation(rec.transcript or "", card=card)
     storage.update_conversation_summary(conv_id, summary)
+    storage.add_conversation_cost(conv_id, summary_cost)
+    log.info("conv %s summary cost: $%.4f", conv_id, summary_cost)
 
     rec = storage.get_conversation(conv_id)
     assert rec is not None
@@ -306,8 +314,10 @@ def _run_audio_pipeline(conv_id: str) -> None:
         return
     try:
         storage.update_conversation_status(conv_id, "transcribing")
-        transcript = transcribe_audio(rec.audio_path)
+        transcript, transcribe_cost = transcribe_audio(rec.audio_path)
         storage.update_conversation_transcript(conv_id, transcript)
+        storage.add_conversation_cost(conv_id, transcribe_cost)
+        log.info("conv %s whisper cost: $%.4f", conv_id, transcribe_cost)
         _summarize_and_render(conv_id)
     except Exception as exc:  # noqa: BLE001
         log.exception("audio pipeline failed for %s", conv_id)
@@ -394,6 +404,8 @@ def get_conversation_endpoint(
     payload = rec.model_dump()
     has_pdf = (storage.report_dir() / f"conv-{conv_id}.pdf").is_file()
     payload["pdf_url"] = f"/conversations/{conv_id}/report.pdf" if has_pdf else None
+    if user.role != "manager":
+        payload.pop("cost_usd", None)
     return payload
 
 
@@ -421,7 +433,7 @@ def list_conversations_endpoint(
         # When manager views team-wide, look up the card without scope so the
         # customer name resolves even for cards belonging to other reps.
         card = storage.get_card(r.card_id) if r.card_id else None
-        out.append({
+        row = {
             "id": r.id,
             "status": r.status,
             "started_at": r.started_at,
@@ -430,7 +442,10 @@ def list_conversations_endpoint(
             "user_id": r.user_id,
             "customer_name": card.extracted.name if card and card.extracted else None,
             "customer_company": card.extracted.company if card and card.extracted else None,
-        })
+        }
+        if user.role == "manager":
+            row["cost_usd"] = r.cost_usd
+        out.append(row)
     return out
 
 
