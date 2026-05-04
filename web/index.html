@@ -33,6 +33,23 @@
     --err-soft: rgba(220, 38, 38, 0.10);
     --chip: var(--accent-soft);
 
+    /* Semantic phase colors — used for status chips, KPI accents, etc.
+       Each pipeline phase (upload, transcribe, summarize…) gets its own
+       hue so reps can read state from peripheral vision. */
+    --recording:    #ef4444;
+    --uploading:    #f59e0b;
+    --transcribing: #0891b2;
+    --summarizing:  #7c3aed;
+    --success:      #059669;
+    --recording-soft:    rgba(239, 68, 68, 0.10);
+    --uploading-soft:    rgba(245, 158, 11, 0.10);
+    --transcribing-soft: rgba(8,  145, 178, 0.10);
+    --summarizing-soft:  rgba(124, 58,  237, 0.10);
+    --success-soft:      rgba(5,   150, 105, 0.10);
+
+    /* Primary brand gradient — used on active tab pill and primary buttons. */
+    --brand-grad: linear-gradient(135deg, #2563eb 0%, #6366f1 100%);
+
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
     --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
@@ -69,6 +86,20 @@
       --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
       --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
       --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+      /* Lighter shades in dark mode for legibility on dark surfaces. */
+      --recording:    #f87171;
+      --uploading:    #fbbf24;
+      --transcribing: #22d3ee;
+      --summarizing:  #a78bfa;
+      --success:      #34d399;
+      --recording-soft:    rgba(248, 113, 113, 0.16);
+      --uploading-soft:    rgba(251, 191, 36,  0.16);
+      --transcribing-soft: rgba(34,  211, 238, 0.16);
+      --summarizing-soft:  rgba(167, 139, 250, 0.16);
+      --success-soft:      rgba(52,  211, 153, 0.16);
+
+      --brand-grad: linear-gradient(135deg, #60a5fa 0%, #818cf8 100%);
     }
   }
 
@@ -484,7 +515,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-input);
     padding: 12px 14px;
+    border-top-width: 3px;
   }
+  /* Each KPI gets its own top-border hue so the four numbers pop visually. */
+  .kpi-strip > .kpi:nth-child(1) { border-top-color: var(--success);     }  /* total spend */
+  .kpi-strip > .kpi:nth-child(2) { border-top-color: var(--accent);      }  /* cards */
+  .kpi-strip > .kpi:nth-child(3) { border-top-color: var(--summarizing); }  /* conversations */
+  .kpi-strip > .kpi:nth-child(4) { border-top-color: var(--uploading);   }  /* active reps */
   .kpi .kpi-label {
     font-size: 11.5px;
     color: var(--muted);
@@ -591,7 +628,14 @@
 
   body {
     margin: 0;
-    background: var(--bg);
+    /* Subtle warm-to-cool wash — barely visible but adds depth. The fixed
+       attachment keeps the gradient stationary as the page scrolls. */
+    background:
+      linear-gradient(180deg,
+        var(--bg) 0%,
+        color-mix(in srgb, var(--bg) 92%, var(--accent) 8%) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
     color: var(--ink);
     font-family: var(--font-sans);
     font-size: 15px;
@@ -677,8 +721,9 @@
   }
   .tab:hover:not(.active) { background: var(--surface-2); color: var(--ink); }
   .tab.active {
-    background: var(--ink);
-    color: var(--bg);
+    background: var(--brand-grad);
+    color: white;
+    box-shadow: 0 1px 4px rgba(99, 102, 241, 0.25);
   }
   .tab .ico { width: 16px; height: 16px; }
 
@@ -793,9 +838,11 @@
   }
 
   /* ----- buttons (pill-shaped, subtle hover) ------------------------- */
+  /* Primary buttons get the brand gradient. Disabled / secondary / danger
+     each override below. */
   button {
-    background: var(--ink);
-    color: var(--bg);
+    background: var(--brand-grad);
+    color: white;
     border: 0;
     padding: 11px 18px;
     border-radius: var(--radius-pill);
@@ -809,10 +856,14 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    transition: transform var(--transition), opacity var(--transition), background var(--transition);
-    box-shadow: var(--shadow-xs);
+    transition: transform var(--transition), opacity var(--transition), box-shadow var(--transition);
+    box-shadow: 0 1px 3px rgba(99, 102, 241, 0.25);
   }
-  button:hover:not([disabled]) { opacity: 0.9; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+  button:hover:not([disabled]) {
+    opacity: 0.95;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  }
   button:active:not([disabled]) { transform: translateY(0); }
   button[disabled] {
     background: var(--surface-2);
@@ -824,9 +875,20 @@
     background: var(--surface);
     color: var(--ink);
     border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-xs);
   }
-  button.danger { background: var(--err); color: #fff; }
-  button.danger:hover { background: var(--err); }
+  button.secondary:hover:not([disabled]) {
+    box-shadow: var(--shadow-sm);
+  }
+  button.danger {
+    background: var(--err);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.25);
+  }
+  button.danger:hover:not([disabled]) {
+    background: var(--err);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+  }
 
   button .ico { width: 16px; height: 16px; flex-shrink: 0; }
   button.btn-lg .ico { width: 18px; height: 18px; }
@@ -877,12 +939,34 @@
     letter-spacing: 0;
     margin-left: auto;
     border: 1px solid var(--border);
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
   }
   .chip::before {
     content: "";
     width: 6px; height: 6px;
     border-radius: 50%;
-    background: var(--soft);
+    background: currentColor;       /* dot inherits the chip color */
+    opacity: 0.85;
+  }
+
+  /* Phase-colored chips — driven by `data-state` set in JS when status changes.
+     Each pipeline phase has its own hue so reps recognize state at a glance. */
+  .chip[data-state="recording"]    { background: var(--recording-soft);    color: var(--recording);    border-color: transparent; }
+  .chip[data-state="uploading"]    { background: var(--uploading-soft);    color: var(--uploading);    border-color: transparent; }
+  .chip[data-state="extracting"]   { background: var(--transcribing-soft); color: var(--transcribing); border-color: transparent; }
+  .chip[data-state="researching"]  { background: var(--summarizing-soft);  color: var(--summarizing);  border-color: transparent; }
+  .chip[data-state="transcribing"] { background: var(--transcribing-soft); color: var(--transcribing); border-color: transparent; }
+  .chip[data-state="summarizing"]  { background: var(--summarizing-soft);  color: var(--summarizing);  border-color: transparent; }
+  .chip[data-state="ready"]        { background: var(--success-soft);      color: var(--success);      border-color: transparent; }
+  .chip[data-state="error"]        { background: var(--err-soft);          color: var(--err);          border-color: transparent; }
+  /* Subtle pulse on the dot when the system is actively working. */
+  .chip[data-state="recording"]::before,
+  .chip[data-state="uploading"]::before,
+  .chip[data-state="extracting"]::before,
+  .chip[data-state="researching"]::before,
+  .chip[data-state="transcribing"]::before,
+  .chip[data-state="summarizing"]::before {
+    animation: pulse 1.5s ease-in-out infinite;
   }
 
   /* ----- category chip (kept colorful, lighter style) --------------- */
@@ -1956,6 +2040,14 @@ const stagesEl = document.getElementById("stages");
 const progressbar = document.getElementById("progressbar");
 function showProgress(on) { progressbar.classList.toggle("show", !!on); }
 
+/** Update a status chip's text AND its data-state, which drives the
+ *  phase-coloring CSS (amber/cyan/violet/emerald/red etc.). */
+function setChipState(el, state) {
+  if (!el) return;
+  el.textContent = state || "";
+  el.dataset.state = state || "";
+}
+
 let chosenFile = null;
 let stageStart = {};       // monotonic ms per stage key, for elapsed timers
 let elapsedTimer = null;   // setInterval handle
@@ -2161,7 +2253,7 @@ submitBtn.addEventListener("click", async () => {
   setStatus("");
   resultPanel.style.display = "";
   showProgress(true);
-  chip.textContent = "uploading";
+  setChipState(chip, "uploading");
   resetStages();
   setStage("upload", "active");
   renderSkeleton();
@@ -2182,7 +2274,7 @@ submitBtn.addEventListener("click", async () => {
     if (!res.ok) throw new Error("Upload failed: " + res.status + " " + (await res.text()));
     const { id } = await res.json();
     setStage("upload", "done");
-    chip.textContent = "pending";
+    setChipState(chip, "pending");
     setBtnLoading(true, "Analyzing…");
     pollUntilReady(id);
   } catch (err) {
@@ -2206,7 +2298,7 @@ async function pollUntilReady(id) {
       setStatus("Lost connection while polling. Retrying…", true);
       continue;
     }
-    chip.textContent = data.status;
+    setChipState(chip, data.status);
     applyStatusToStages(data.status, !!data.extracted, !!data.research, !!data.pdf_url);
     renderPartial(data);
     if (data.status === "ready") {
@@ -2648,7 +2740,7 @@ startBtn.addEventListener("click", async () => {
   const ok = await startRecording();
   if (!ok) return;
 
-  convChip.textContent = "recording";
+  setChipState(convChip, "recording");
   setConvTabLive(true);                    // show pulsing dot on Conversation tab
   convPanel.classList.add("recording");    // hides card selector + status; tightens timer area
   startBtn.style.display = "none";
@@ -2657,7 +2749,7 @@ startBtn.addEventListener("click", async () => {
 });
 
 stopBtn.addEventListener("click", async () => {
-  convChip.textContent = "uploading";
+  setChipState(convChip, "uploading");
   setConvTabLive(false);
   convPanel.classList.remove("recording");   // restore card selector + status visibility
   stopBtn.style.display = "none";
@@ -2698,7 +2790,7 @@ stopBtn.addEventListener("click", async () => {
     setConvStage("upload", "done");           // mark upload stage complete
     pollConversation(convId);
   } catch (err) {
-    convChip.textContent = "error";
+    setChipState(convChip, "error");
     setConvStatus(err.message || String(err), true);
     setConvStage("upload", "failed", "upload failed");
     showConvProgress(false);
@@ -2720,7 +2812,7 @@ async function pollConversation(id) {
       setConvStatus("Lost connection while polling. Retrying…", true);
       continue;
     }
-    convChip.textContent = data.status;
+    setChipState(convChip, data.status);
     applyConvStatusToStages(data.status);
 
     if (data.transcript && !renderedTranscript) {
