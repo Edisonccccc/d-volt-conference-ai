@@ -385,10 +385,11 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 10px 42px 10px 12px;         /* extra right padding for corner btn */
     white-space: pre-wrap;
     font-size: 13px;
     line-height: 1.55;
+    position: relative;
   }
   .history-empty {
     text-align: center;
@@ -1071,12 +1072,27 @@
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--radius-input);
-    padding: 14px 16px;
+    padding: 14px 46px 14px 16px;          /* extra right padding for corner btn */
     white-space: pre-wrap;
     word-break: break-word;
     font-size: 13.5px;
     line-height: 1.6;
     font-family: var(--font-sans);
+    position: relative;
+  }
+
+  /* Corner copy button — sits inside an email-draft / transcript-block so
+     reps can grab the whole content with one tap, ChatGPT-style. */
+  .copy-corner {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .copy-corner:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
   }
 
   /* ----- skeleton placeholders --------------------------------------- */
@@ -1971,9 +1987,10 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
  *  click is handled by a single delegated handler at the bottom of the
  *  script (see "copy-btn" handler) so dynamically-rendered HTML works
  *  without re-binding listeners. */
-function copyBtnHtml(text) {
+function copyBtnHtml(text, extraClass = "") {
   const safe = escapeHtml(String(text ?? ""));
-  return `<button type="button" class="copy-btn" data-copy-text="${safe}" title="Copy" aria-label="Copy">
+  const cls = ("copy-btn " + (extraClass || "")).trim();
+  return `<button type="button" class="${cls}" data-copy-text="${safe}" title="Copy" aria-label="Copy">
     <svg class="copy-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -2389,22 +2406,14 @@ function renderSummary(data) {
 
       ${s.follow_up_email ? `
         <h3>Draft follow-up email</h3>
-        <div class="email-draft">${escapeHtml(s.follow_up_email)}</div>
-        <div style="margin-top:8px;">
-          <button class="secondary" id="copyEmailBtn">Copy email to clipboard</button>
-        </div>
+        <div class="email-draft">${copyBtnHtml(s.follow_up_email, "copy-corner")}${escapeHtml(s.follow_up_email)}</div>
       ` : ""}
 
       ${pdfButtonsHtml(data.pdf_url, "conversation-" + (data.id || ""))}
     </div>
   `;
-  const copyBtn = document.getElementById("copyEmailBtn");
-  if (copyBtn) {
-    copyBtn.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(s.follow_up_email); copyBtn.textContent = "Copied"; }
-      catch { copyBtn.textContent = "Copy failed — select & copy manually"; }
-    });
-  }
+  // (Email copy now uses the corner icon inside .email-draft, handled by
+  // the document-level .copy-btn delegated listener.)
 }
 
 // ===========================================================================
@@ -2659,8 +2668,8 @@ function renderConversationDetailInline(c) {
     ${s.customer_concerns && s.customer_concerns.length ? `<h3>Customer concerns</h3>${renderBullets(s.customer_concerns)}` : ""}
     ${s.commitments && s.commitments.length      ? `<h3>Commitments</h3>${renderBullets(s.commitments)}` : ""}
     ${s.next_steps && s.next_steps.length        ? `<h3>Next steps</h3>${renderBullets(s.next_steps)}` : ""}
-    ${s.follow_up_email ? `<h3>Draft follow-up email</h3><div class="email-draft">${escapeHtml(s.follow_up_email)}</div>` : ""}
-    ${c.transcript ? `<h3>Transcript (verbatim)</h3><div class="transcript-block">${escapeHtml(c.transcript)}</div>` : ""}
+    ${s.follow_up_email ? `<h3>Draft follow-up email</h3><div class="email-draft">${copyBtnHtml(s.follow_up_email, "copy-corner")}${escapeHtml(s.follow_up_email)}</div>` : ""}
+    ${c.transcript ? `<h3>Transcript (verbatim)</h3><div class="transcript-block">${copyBtnHtml(c.transcript, "copy-corner")}${escapeHtml(c.transcript)}</div>` : ""}
 
     ${pdfButtonsHtml(c.pdf_url, "conversation-" + (c.id || ""))}
   `;
