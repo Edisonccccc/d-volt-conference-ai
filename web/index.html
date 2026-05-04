@@ -1399,6 +1399,62 @@ async function authFetch(path, options = {}) {
   return res;
 }
 
+/** Render the standard "Open PDF / Download PDF" button row for a given
+ *  pdf_url path. The buttons are click-handled below via delegation; we use
+ *  authFetch + a blob URL because a plain <a href> would 401 (the browser
+ *  navigation doesn't carry the JWT). */
+function pdfButtonsHtml(pdfPath, filenameStem) {
+  if (!pdfPath) return "";
+  const filename = (filenameStem || "report") + ".pdf";
+  return `
+    <div class="pdf-row">
+      <button type="button" class="secondary"
+              data-pdf-url="${escapeHtml(pdfPath)}"
+              data-pdf-action="open">Open PDF</button>
+      <button type="button"
+              data-pdf-url="${escapeHtml(pdfPath)}"
+              data-pdf-name="${escapeHtml(filename)}"
+              data-pdf-action="download">Download PDF</button>
+    </div>`;
+}
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-pdf-action]");
+  if (!btn || btn.disabled) return;
+  e.preventDefault();
+  const path = btn.dataset.pdfUrl;
+  const action = btn.dataset.pdfAction;
+  const filename = btn.dataset.pdfName || "report.pdf";
+  if (!path) return;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = action === "download" ? "Preparing…" : "Loading…";
+  try {
+    const r = await authFetch(path);
+    if (!r.ok) throw new Error("Failed (" + r.status + ")");
+    const blob = await r.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    if (action === "open") {
+      a.target = "_blank";
+      a.rel = "noopener";
+    } else {
+      a.download = filename;
+    }
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Keep the URL alive a bit so the new tab can finish loading the PDF.
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch (err) {
+    alert("Could not load PDF: " + (err.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
+
 function showAuthScreen() {
   document.body.classList.remove("loading", "authenticated", "role-rep", "role-manager");
   document.body.classList.add("unauthenticated");
@@ -1939,11 +1995,7 @@ function renderPartial(data) {
       ` : ""}
     ` : `<div class="skeleton long"></div><div class="skeleton long"></div><div class="skeleton short"></div>`}
 
-    ${data.pdf_url ? `
-      <div class="pdf-row">
-        <a href="${API_BASE}${data.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
-        <a href="${API_BASE}${data.pdf_url}" download><button>Download PDF</button></a>
-      </div>` : ""}
+    ${pdfButtonsHtml(data.pdf_url, "sales-brief-" + (data.id || ""))}
 
     ${data.error ? `<details open><summary>Error details</summary><pre>${escapeHtml(data.error)}</pre></details>` : ""}
   `;
@@ -2236,11 +2288,7 @@ function renderSummary(data) {
         </div>
       ` : ""}
 
-      ${data.pdf_url ? `
-        <div class="pdf-row" style="margin-top:14px;">
-          <a href="${API_BASE}${data.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
-          <a href="${API_BASE}${data.pdf_url}" download><button>Download PDF</button></a>
-        </div>` : ""}
+      ${pdfButtonsHtml(data.pdf_url, "conversation-" + (data.id || ""))}
     </div>
   `;
   const copyBtn = document.getElementById("copyEmailBtn");
@@ -2487,11 +2535,7 @@ function renderCardDetailInline(c) {
     ${r.opening_questions && r.opening_questions.length ? `<h3>Opening questions</h3>${renderBullets(r.opening_questions)}` : ""}
     ${r.sources && r.sources.length ? `<h3>Sources</h3>${renderBullets(r.sources)}` : ""}
 
-    ${c.pdf_url ? `
-      <div class="pdf-row">
-        <a href="${API_BASE}${c.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
-        <a href="${API_BASE}${c.pdf_url}" download><button>Download PDF</button></a>
-      </div>` : ""}
+    ${pdfButtonsHtml(c.pdf_url, "sales-brief-" + (c.id || ""))}
   `;
 }
 
@@ -2511,11 +2555,7 @@ function renderConversationDetailInline(c) {
     ${s.follow_up_email ? `<h3>Draft follow-up email</h3><div class="email-draft">${escapeHtml(s.follow_up_email)}</div>` : ""}
     ${c.transcript ? `<h3>Transcript (verbatim)</h3><div class="transcript-block">${escapeHtml(c.transcript)}</div>` : ""}
 
-    ${c.pdf_url ? `
-      <div class="pdf-row">
-        <a href="${API_BASE}${c.pdf_url}" target="_blank"><button class="secondary">Open PDF</button></a>
-        <a href="${API_BASE}${c.pdf_url}" download><button>Download PDF</button></a>
-      </div>` : ""}
+    ${pdfButtonsHtml(c.pdf_url, "conversation-" + (c.id || ""))}
   `;
 }
 
