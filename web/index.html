@@ -1321,6 +1321,9 @@
              autocomplete="email" required />
       <input type="password" id="authPassword" name="password" placeholder="Password"
              autocomplete="current-password" minlength="8" required />
+      <input type="password" id="authPasswordConfirm" name="password_confirm"
+             placeholder="Confirm password"
+             autocomplete="new-password" minlength="8" hidden />
       <button type="submit" id="authSubmit" class="btn-lg">
         <span class="btn-spinner"></span>
         <span id="authSubmitLabel">Sign in</span>
@@ -1741,8 +1744,9 @@ const authSub      = document.getElementById("authSub");
 const authForm     = document.getElementById("authForm");
 const authEmail    = document.getElementById("authEmail");
 const authPassword = document.getElementById("authPassword");
-const authName     = document.getElementById("authName");
-const authCompany  = document.getElementById("authCompany");
+const authName            = document.getElementById("authName");
+const authCompany         = document.getElementById("authCompany");
+const authPasswordConfirm = document.getElementById("authPasswordConfirm");
 const authSubmit   = document.getElementById("authSubmit");
 const authSubmitLabel = document.getElementById("authSubmitLabel");
 const authStatus   = document.getElementById("authStatus");
@@ -1759,6 +1763,8 @@ function applyAuthMode() {
     authName.hidden = false;
     authCompany.hidden = false;
     authCompany.required = true;
+    authPasswordConfirm.hidden = false;
+    authPasswordConfirm.required = true;
     authToggle.innerHTML = "Already have an account? <b>Sign in</b>";
   } else {
     authTitle.textContent = "Sign in";
@@ -1768,6 +1774,9 @@ function applyAuthMode() {
     authName.hidden = true;
     authCompany.hidden = true;
     authCompany.required = false;
+    authPasswordConfirm.hidden = true;
+    authPasswordConfirm.required = false;
+    authPasswordConfirm.value = "";   // don't carry leftover into login
     authToggle.innerHTML = "Don't have an account? <b>Sign up</b>";
   }
   setAuthStatus("");
@@ -1786,6 +1795,16 @@ function setAuthStatus(msg) {
 authForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   setAuthStatus("");
+
+  // Client-side guardrail: passwords must match in register mode. Done
+  // here (not server-side) since the server only ever receives one password.
+  if (authMode === "register" && authPassword.value !== authPasswordConfirm.value) {
+    setAuthStatus("Passwords don't match. Please re-type the confirmation.");
+    authPasswordConfirm.focus();
+    authPasswordConfirm.select();
+    return;
+  }
+
   authSubmit.classList.add("loading");
   authSubmit.disabled = true;
   const path = authMode === "register" ? "/auth/register" : "/auth/login";
