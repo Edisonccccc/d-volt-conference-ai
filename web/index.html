@@ -1171,6 +1171,228 @@
   ul.bullets li .bullet-text { flex: 1; min-width: 0; }
   ul.bullets li .copy-btn { margin-top: -3px; }
 
+  /* ============================================================
+     Level-C result panel — sectional cards, hero, varied bullets.
+     Used in: live card-analysis result, live conversation summary,
+     and the History tab's inline expansions of both.
+     ============================================================ */
+
+  .hero-card {
+    display: flex;
+    gap: 14px;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    margin-top: 12px;
+    align-items: center;
+  }
+  .hero-card .hero-photo {
+    width: 80px; height: 80px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .hero-card .hero-info { flex: 1; min-width: 0; }
+  .hero-card .hero-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.018em;
+    line-height: 1.2;
+  }
+  .hero-card .hero-sub {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .hero-card .hero-cat { margin-top: 10px; }
+  @media (max-width: 480px) {
+    .hero-card .hero-photo { width: 64px; height: 64px; }
+    .hero-card .hero-name { font-size: 17px; }
+  }
+
+  .result-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    margin-top: 12px;
+    animation: fade-in 240ms ease-out;
+  }
+  @media (prefers-color-scheme: dark) {
+    .result-card { background: color-mix(in srgb, var(--surface-2) 70%, var(--bg)); }
+  }
+  .result-card .section-h {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.012em;
+    text-transform: none;
+  }
+  .result-card .section-h .section-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .result-card .section-h .section-icon svg { width: 16px; height: 16px; }
+
+  /* When a section is "warn" (e.g. customer concerns, pain points) the
+     icon tile takes the amber hue. Same for "success" (commitments). */
+  .result-card.warn    .section-h .section-icon { color: var(--uploading); background: var(--uploading-soft); border-color: transparent; }
+  .result-card.success .section-h .section-icon { color: var(--success);    background: var(--success-soft);   border-color: transparent; }
+  .result-card.info    .section-h .section-icon { color: var(--summarizing);background: var(--summarizing-soft);border-color: transparent; }
+  .result-card.cyan    .section-h .section-icon { color: var(--transcribing);background: var(--transcribing-soft);border-color: transparent; }
+
+  /* Tighter field grid inside a result card (label column shorter). */
+  .result-card .field { grid-template-columns: 90px 1fr; padding: 6px 0; font-size: 14px; }
+  @media (max-width: 640px) {
+    .result-card .field { grid-template-columns: 1fr; }
+  }
+
+  /* Pain-point / concern bullets — amber dot + warning hue. */
+  ul.bullets-warn { margin: 4px 0 0; padding-left: 0; list-style: none; }
+  ul.bullets-warn li {
+    margin: 8px 0;
+    padding-left: 22px;
+    position: relative;
+    line-height: 1.55;
+    font-size: 14px;
+  }
+  ul.bullets-warn li::before {
+    content: "";
+    position: absolute;
+    left: 6px; top: 8px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--uploading);
+    box-shadow: 0 0 0 3px var(--uploading-soft);
+  }
+
+  /* Commitments / next-steps bullets — green dot. */
+  ul.bullets-ok { margin: 4px 0 0; padding-left: 0; list-style: none; }
+  ul.bullets-ok li {
+    margin: 8px 0;
+    padding-left: 22px;
+    position: relative;
+    line-height: 1.55;
+    font-size: 14px;
+  }
+  ul.bullets-ok li::before {
+    content: "";
+    position: absolute;
+    left: 6px; top: 8px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 3px var(--success-soft);
+  }
+
+  /* News timeline — dot with halo. */
+  ul.timeline { margin: 4px 0 0; padding-left: 0; list-style: none; }
+  ul.timeline li {
+    margin: 10px 0;
+    padding-left: 24px;
+    position: relative;
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  ul.timeline li::before {
+    content: "";
+    position: absolute;
+    left: 6px; top: 7px;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /* Opening questions — blockquote style. */
+  ul.questions { margin: 4px 0 0; padding-left: 0; list-style: none; }
+  ul.questions li {
+    margin: 8px 0;
+    padding: 10px 14px;
+    background: var(--surface);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius-input) var(--radius-input) 0;
+    color: var(--ink);
+    font-size: 14.5px;
+    font-style: italic;
+    line-height: 1.5;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  ul.questions li .q-text { flex: 1; min-width: 0; }
+  ul.questions li::before {
+    content: "\201C";
+    color: var(--accent);
+    font-size: 22px;
+    line-height: 1;
+    font-style: normal;
+    margin-right: 2px;
+  }
+
+  /* Bigger version of the cat-chip used in hero. */
+  .hero-cat .cat-chip {
+    padding: 5px 14px;
+    font-size: 12.5px;
+  }
+
+  /* Stat-strip row for company snapshot (industry / size / products as chips). */
+  .stat-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 6px 0 0;
+  }
+  .stat-strip .stat-chip {
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .stat-strip .stat-chip b {
+    color: var(--muted);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  /* Sources list — small, muted. */
+  ul.source-list { margin: 4px 0 0; padding-left: 0; list-style: none; }
+  ul.source-list li {
+    margin: 4px 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  ul.source-list li a { color: var(--accent); text-decoration: none; }
+  ul.source-list li a:hover { text-decoration: underline; }
+
+  /* "summary lead" — the conversation overall summary in a soft accent block. */
+  .summary-lead {
+    background: var(--accent-soft);
+    color: var(--ink);
+    padding: 14px 16px;
+    border-radius: var(--radius-input);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
   .pdf-row { margin-top: 16px; display: flex; gap: 10px; }
   .pdf-row a { flex: 1; display: block; text-align: center; text-decoration: none; }
 
@@ -2344,6 +2566,129 @@ function copyBtnHtml(text, extraClass = "") {
   </button>`;
 }
 
+// ============================================================================
+// Level-C result helpers — icons, section cards, hero, varied bullet styles.
+// ============================================================================
+
+/** Tiny inline SVGs (24x24 viewBox), Lucide-style. Single-color via currentColor. */
+const ICONS = {
+  contact: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4"/><rect x="8" y="2" width="8" height="4" rx="1"/><circle cx="12" cy="11" r="3"/><path d="M6 21v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1"/></svg>',
+  building: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/></svg>',
+  news: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8M18 10h-8"/></svg>',
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+  message: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+  fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  arrowRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+};
+
+/** Render one section as a result-card with icon header. */
+function sectionCard(iconKey, title, contentHtml, cls = "") {
+  return `
+    <div class="result-card ${cls}">
+      <div class="section-h">
+        <span class="section-icon">${ICONS[iconKey] || ""}</span>
+        <span>${escapeHtml(title)}</span>
+      </div>
+      ${contentHtml}
+    </div>`;
+}
+
+/** Hero card — photo + name + title/company + category chip. */
+function heroCardHtml(card, ex, r) {
+  const name = (ex && ex.name) || "Unknown contact";
+  const subParts = [];
+  if (ex && ex.title)   subParts.push(escapeHtml(ex.title));
+  if (ex && ex.company) subParts.push(escapeHtml(ex.company));
+  if (r && r.industry)  subParts.push(escapeHtml(r.industry));
+  const sub = subParts.join(" · ");
+  const heroId = "heroPhoto-" + (card.id || "x");
+  const placeholder =
+    'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23eee"/></svg>';
+  const catHtml = r && r.company_category
+    ? `<div class="hero-cat">${renderCategory(r.company_category, r.category_rationale)}</div>`
+    : "";
+  return `
+    <div class="hero-card">
+      <img class="hero-photo" id="${heroId}" alt="" src="${placeholder}" />
+      <div class="hero-info">
+        <div class="hero-name">${escapeHtml(name)}</div>
+        ${sub ? `<div class="hero-sub">${sub}</div>` : ""}
+        ${catHtml}
+      </div>
+    </div>`;
+}
+
+/** Async-load the hero photo into <img id="heroPhoto-<cardId>"> via authFetch+blob. */
+async function loadHeroPhoto(cardId) {
+  if (!cardId) return;
+  try {
+    const res = await authFetch("/cards/" + encodeURIComponent(cardId) + "/photo");
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const img = document.getElementById("heroPhoto-" + cardId);
+    if (img) {
+      img.src = url;
+      img.addEventListener("load",  () => URL.revokeObjectURL(url), { once: true });
+      img.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+    } else {
+      URL.revokeObjectURL(url);
+    }
+  } catch { /* non-fatal */ }
+}
+
+/** Specialized bullet renderers. */
+function renderBulletsWarn(items) {
+  if (!items || !items.length) return `<div class="empty">—</div>`;
+  return `<ul class="bullets-warn">${items.map(i => {
+    const t = String(i ?? "");
+    return `<li>${escapeHtml(t)}${copyBtnHtml(t)}</li>`;
+  }).join("")}</ul>`;
+}
+function renderBulletsOk(items) {
+  if (!items || !items.length) return `<div class="empty">—</div>`;
+  return `<ul class="bullets-ok">${items.map(i => {
+    const t = String(i ?? "");
+    return `<li>${escapeHtml(t)}${copyBtnHtml(t)}</li>`;
+  }).join("")}</ul>`;
+}
+function renderTimeline(items) {
+  if (!items || !items.length) return `<div class="empty">—</div>`;
+  return `<ul class="timeline">${items.map(i => {
+    const t = String(i ?? "");
+    return `<li>${escapeHtml(t)}${copyBtnHtml(t)}</li>`;
+  }).join("")}</ul>`;
+}
+function renderQuestions(items) {
+  if (!items || !items.length) return `<div class="empty">—</div>`;
+  return `<ul class="questions">${items.map(i => {
+    const t = String(i ?? "");
+    return `<li><span class="q-text">${escapeHtml(t)}</span>${copyBtnHtml(t)}</li>`;
+  }).join("")}</ul>`;
+}
+function renderSourceList(items) {
+  if (!items || !items.length) return `<div class="empty">—</div>`;
+  return `<ul class="source-list">${items.map(s => {
+    const safe = escapeHtml(String(s ?? ""));
+    return `<li><a href="${escapeHtml(normalizeUrl(s))}" target="_blank" rel="noopener">${safe}</a></li>`;
+  }).join("")}</ul>`;
+}
+
+/** Compact stat strip — used inside the Company section. */
+function statStripHtml(pairs) {
+  // pairs: [["Industry", "Foo"], ["Size", "Bar"]] — drops empties.
+  const present = pairs.filter(([k, v]) => v && String(v).trim());
+  if (!present.length) return "";
+  return `<div class="stat-strip">${present.map(([k, v]) =>
+    `<span class="stat-chip"><b>${escapeHtml(k)}</b>${escapeHtml(Array.isArray(v) ? v.join(", ") : String(v))}</span>`
+  ).join("")}</div>`;
+}
+
 function renderField(label, value) {
   if (value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) {
     return `<div class="field"><b>${label}</b><span class="empty">—</span></div>`;
@@ -2404,66 +2749,94 @@ function renderCategory(cat, rationale) {
 }
 
 function renderSkeleton() {
+  // Initial skeleton matches the Level-C card layout so there's no flash
+  // of differently-shaped content when the real data arrives.
   resultEl.innerHTML = `
-    <h3 style="margin-top:8px;">Contact</h3>
-    <div class="skeleton long"></div>
-    <div class="skeleton short"></div>
-    <div class="skeleton long"></div>
-    <h3 style="margin-top:14px;">Company brief</h3>
-    <div class="skeleton long"></div>
-    <div class="skeleton long"></div>
-    <div class="skeleton short"></div>
+    <div class="hero-card">
+      <div class="hero-photo skeleton" style="border-radius:12px;"></div>
+      <div class="hero-info" style="flex:1;">
+        <div class="skeleton short"></div>
+        <div class="skeleton long"></div>
+      </div>
+    </div>
+    ${sectionCard("contact", "Contact",
+       `<div class="skeleton long"></div><div class="skeleton short"></div><div class="skeleton long"></div>`)}
+    ${sectionCard("building", "Company",
+       `<div class="skeleton long"></div><div class="skeleton long"></div><div class="skeleton short"></div>`)}
   `;
 }
 
 function renderPartial(data) {
-  const ex = data.extracted || {};
-  const r = data.research || {};
-  const showResearch = data.research || data.status === "researching" || data.status === "ready";
+  resultEl.innerHTML = renderCardResultHtml(data);
+  if (data.id) loadHeroPhoto(data.id);   // async; populates hero <img>
+}
 
-  resultEl.innerHTML = `
-    <div class="meta-line">id ${escapeHtml(data.id)} · created ${escapeHtml(data.created_at)}</div>
+/** Shared Level-C card-analysis renderer. Used by the live result panel
+ *  and by the History tab's expanded card detail. */
+function renderCardResultHtml(data) {
+  const ex = data.extracted || null;
+  const r  = data.research  || null;
 
-    <h3 style="margin-top:14px;">Contact</h3>
-    ${data.extracted ? `
-      ${renderField("Name", ex.name)}
-      ${renderField("Title", titleDisplay(ex.title, r.contact_title_verified))}
-      ${renderField("Company", ex.company)}
-      ${renderField("Emails", ex.emails)}
-      ${renderField("Phones", ex.phones)}
-      ${renderLinkField("Website", r.company_website || ex.website)}
+  // ---- Hero (always shown, even with partial data) ----
+  let html = heroCardHtml(data, ex, r);
+
+  // ---- Contact section ----
+  if (ex) {
+    const websiteUrl  = (r && r.company_website)  || ex.website;
+    const linkedinUrl = (r && r.contact_linkedin) || ex.linkedin;
+    const titleVal = titleDisplay(ex.title, r && r.contact_title_verified);
+    const contactBody = `
+      ${renderField("Title",   titleVal)}
+      ${renderField("Email",   ex.emails)}
+      ${renderField("Phone",   ex.phones)}
+      ${renderLinkField("Website",  websiteUrl)}
       ${renderField("Address", ex.address)}
-      ${renderLinkField("LinkedIn", r.contact_linkedin || ex.linkedin)}
+      ${renderLinkField("LinkedIn", linkedinUrl)}
       ${ex.notes ? renderField("Notes", ex.notes) : ""}
-    ` : `<div class="skeleton long"></div><div class="skeleton short"></div><div class="skeleton long"></div>`}
+    `;
+    html += sectionCard("contact", "Contact", contactBody);
+  } else {
+    html += sectionCard("contact", "Contact",
+      `<div class="skeleton long"></div><div class="skeleton short"></div><div class="skeleton long"></div>`);
+  }
 
-    <h3 style="margin-top:14px;">Company brief</h3>
-    ${data.research ? `
-      ${renderCategory(r.company_category, r.category_rationale)}
-      ${renderField("One-liner", r.one_liner)}
-      ${renderField("Industry", r.industry)}
-      ${renderField("Size", r.estimated_size)}
-      ${renderField("Products", r.products)}
+  // ---- Company snapshot ----
+  if (r) {
+    const companyBody = `
+      ${r.one_liner ? `<p class="summary-lead" style="margin-bottom:10px;">${escapeHtml(r.one_liner)}</p>` : ""}
+      ${statStripHtml([
+        ["Industry", r.industry],
+        ["Size",     r.estimated_size],
+        ["Products", r.products],
+      ])}
+    `;
+    html += sectionCard("building", "Company", companyBody);
 
-      <h3 style="margin-top:14px;">Recent news</h3>
-      ${renderBullets(r.recent_news)}
+    if (r.recent_news && r.recent_news.length) {
+      html += sectionCard("news", "Recent news", renderTimeline(r.recent_news));
+    }
+    if (r.pain_points && r.pain_points.length) {
+      html += sectionCard("target", "Likely pain points", renderBulletsWarn(r.pain_points), "warn");
+    }
+    if (r.opening_questions && r.opening_questions.length) {
+      html += sectionCard("message", "Suggested opening questions", renderQuestions(r.opening_questions), "info");
+    }
+    if (r.sources && r.sources.length) {
+      html += sectionCard("link", "Sources", renderSourceList(r.sources));
+    }
+  } else {
+    html += sectionCard("building", "Company",
+      `<div class="skeleton long"></div><div class="skeleton long"></div><div class="skeleton short"></div>`);
+  }
 
-      <h3 style="margin-top:14px;">Likely pain points</h3>
-      ${renderBullets(r.pain_points)}
-
-      <h3 style="margin-top:14px;">Suggested opening questions</h3>
-      ${renderBullets(r.opening_questions)}
-
-      ${r.sources && r.sources.length ? `
-        <h3 style="margin-top:14px;">Sources</h3>
-        ${renderBullets(r.sources)}
-      ` : ""}
-    ` : `<div class="skeleton long"></div><div class="skeleton long"></div><div class="skeleton short"></div>`}
-
-    ${pdfButtonsHtml(data.pdf_url, "sales-brief-" + (data.id || ""))}
-
-    ${data.error ? `<details open><summary>Error details</summary><pre>${escapeHtml(data.error)}</pre></details>` : ""}
-  `;
+  // ---- PDF actions + error ----
+  html += pdfButtonsHtml(data.pdf_url, "sales-brief-" + (data.id || ""));
+  if (data.error) {
+    html += `<details open><summary>Error details</summary><pre>${escapeHtml(data.error)}</pre></details>`;
+  }
+  // ---- Tiny meta line at the bottom (where it doesn't fight the hero) ----
+  html += `<div class="meta-line" style="margin-top:10px;">id ${escapeHtml(data.id || "")} · created ${escapeHtml(data.created_at || "")}</div>`;
+  return html;
 }
 
 // ===========================================================================
@@ -2572,22 +2945,18 @@ function applyConvStatusToStages(status) {
 }
 
 function summarySkeletonHtml() {
-  // Shown while the backend is generating the summary, so the user has
-  // some sense of where the data will land.
-  return `
-    <div class="summary-block">
-      <h3>Summary</h3>
-      <div class="skeleton long"></div>
-      <div class="skeleton long"></div>
-      <h3>Key topics</h3>
-      <div class="skeleton long"></div>
-      <div class="skeleton short"></div>
-      <h3>Customer concerns</h3>
-      <div class="skeleton long"></div>
-      <h3>Next steps</h3>
-      <div class="skeleton long"></div>
-      <div class="skeleton short"></div>
-    </div>`;
+  // Skeleton matches the Level-C card layout so there's no flash
+  // of differently-shaped content when the real summary arrives.
+  return [
+    sectionCard("fileText", "Summary",
+      `<div class="skeleton long"></div><div class="skeleton long"></div>`),
+    sectionCard("list", "Key topics",
+      `<div class="skeleton long"></div><div class="skeleton short"></div>`),
+    sectionCard("alert", "Customer concerns",
+      `<div class="skeleton long"></div>`, "warn"),
+    sectionCard("arrowRight", "Next steps",
+      `<div class="skeleton long"></div><div class="skeleton short"></div>`, "success"),
+  ].join("");
 }
 
 function setConvStatus(msg, isErr=false) {
@@ -2849,34 +3218,52 @@ async function pollConversation(id) {
 }
 
 function renderSummary(data) {
+  summaryEl.innerHTML = renderConversationSummaryHtml(data);
+}
+
+/** Shared Level-C conversation summary renderer. Used by both the live
+ *  result rendering and the History tab's expanded conversation detail. */
+function renderConversationSummaryHtml(data) {
   const s = data.summary || {};
-  summaryEl.innerHTML = `
-    <div class="summary-block">
-      <h3 style="margin-top:14px;">Summary</h3>
-      <div class="one-para">${escapeHtml(s.summary || "—")}</div>
+  let html = "";
 
-      <h3>Key topics</h3>
-      ${renderBullets(s.key_topics)}
+  // Lead summary paragraph (hero-equivalent for the conversation)
+  if (s.summary) {
+    html += sectionCard("fileText", "Summary",
+      `<p class="summary-lead">${escapeHtml(s.summary)}${copyBtnHtml(s.summary, "copy-corner")}</p>`,
+    );
+  }
 
-      <h3>Customer concerns</h3>
-      ${renderBullets(s.customer_concerns)}
-
-      <h3>Commitments</h3>
-      ${renderBullets(s.commitments)}
-
-      <h3>Next steps</h3>
-      ${renderBullets(s.next_steps)}
-
-      ${s.follow_up_email ? `
-        <h3>Draft follow-up email</h3>
-        <div class="email-draft">${copyBtnHtml(s.follow_up_email, "copy-corner")}${escapeHtml(s.follow_up_email)}</div>
-      ` : ""}
-
-      ${pdfButtonsHtml(data.pdf_url, "conversation-" + (data.id || ""))}
-    </div>
-  `;
-  // (Email copy now uses the corner icon inside .email-draft, handled by
-  // the document-level .copy-btn delegated listener.)
+  if (s.key_topics && s.key_topics.length) {
+    html += sectionCard("list", "Key topics", renderBullets(s.key_topics));
+  }
+  if (s.customer_concerns && s.customer_concerns.length) {
+    html += sectionCard("alert", "Customer concerns", renderBulletsWarn(s.customer_concerns), "warn");
+  }
+  if (s.commitments && s.commitments.length) {
+    html += sectionCard("check", "Commitments", renderBulletsOk(s.commitments), "success");
+  }
+  if (s.next_steps && s.next_steps.length) {
+    html += sectionCard("arrowRight", "Next steps", renderBulletsOk(s.next_steps), "success");
+  }
+  if (s.follow_up_email) {
+    html += sectionCard(
+      "mail",
+      "Draft follow-up email",
+      `<div class="email-draft">${copyBtnHtml(s.follow_up_email, "copy-corner")}${escapeHtml(s.follow_up_email)}</div>`,
+      "info",
+    );
+  }
+  // Transcript appears only in the History view (not the live one).
+  if (data.transcript) {
+    html += sectionCard(
+      "fileText",
+      "Transcript (verbatim)",
+      `<div class="transcript-block">${copyBtnHtml(data.transcript, "copy-corner")}${escapeHtml(data.transcript)}</div>`,
+    );
+  }
+  html += pdfButtonsHtml(data.pdf_url, "conversation-" + (data.id || ""));
+  return html;
 }
 
 // ===========================================================================
@@ -3254,58 +3641,37 @@ async function loadAndRenderDetail(id) {
   detailEl.innerHTML = historyState.section === "cards"
     ? renderCardDetailInline(full)
     : renderConversationDetailInline(full);
+  // The hero card has an empty <img>; fetch + assign the actual photo now
+  // that the DOM has been replaced.
+  if (historyState.section === "cards" && full.id) {
+    loadHeroPhoto(full.id);
+  }
 }
 
+/** History tab — expanded card row uses the same Level-C renderer as the
+ *  live result panel, so look-and-feel is identical. The hero photo is
+ *  loaded async after innerHTML lands (see loadAndRenderDetail below). */
 function renderCardDetailInline(c) {
-  const ex = c.extracted || {};
-  const r  = c.research  || {};
-  const websiteUrl  = r.company_website || ex.website;
-  const linkedinUrl = r.contact_linkedin || ex.linkedin;
-  return `
-    <h3>Contact</h3>
-    ${renderField("Name",     ex.name)}
-    ${renderField("Title",    titleDisplay(ex.title, r.contact_title_verified))}
-    ${renderField("Company",  ex.company)}
-    ${renderField("Emails",   ex.emails)}
-    ${renderField("Phones",   ex.phones)}
-    ${renderLinkField("Website",  websiteUrl)}
-    ${renderField("Address",  ex.address)}
-    ${renderLinkField("LinkedIn", linkedinUrl)}
-
-    <h3>Company brief</h3>
-    ${renderCategory(r.company_category, r.category_rationale)}
-    ${renderField("One-liner", r.one_liner)}
-    ${renderField("Industry",  r.industry)}
-    ${renderField("Size",      r.estimated_size)}
-    ${renderField("Products",  r.products)}
-
-    ${r.recent_news && r.recent_news.length ? `<h3>Recent news</h3>${renderBullets(r.recent_news)}` : ""}
-    ${r.pain_points && r.pain_points.length ? `<h3>Likely pain points</h3>${renderBullets(r.pain_points)}` : ""}
-    ${r.opening_questions && r.opening_questions.length ? `<h3>Opening questions</h3>${renderBullets(r.opening_questions)}` : ""}
-    ${r.sources && r.sources.length ? `<h3>Sources</h3>${renderBullets(r.sources)}` : ""}
-
-    ${pdfButtonsHtml(c.pdf_url, "sales-brief-" + (c.id || ""))}
-  `;
+  return renderCardResultHtml(c);
 }
 
 function renderConversationDetailInline(c) {
-  const s = c.summary || {};
-  const card = c.card_id ? (historyState.cards || []).find(x => x.id === c.card_id) : null;
-  return `
-    ${card ? `<h3>Customer</h3>${renderField("Name", card.name)}${renderField("Company", card.company)}` : ""}
-    <h3>Started</h3>
-    <div class="meta-line">${escapeHtml(c.started_at)}${c.ended_at ? " · ended " + escapeHtml(c.ended_at) : ""}</div>
-
-    ${s.summary ? `<h3>Summary</h3><div class="one-para">${escapeHtml(s.summary)}</div>` : ""}
-    ${s.key_topics && s.key_topics.length        ? `<h3>Key topics</h3>${renderBullets(s.key_topics)}` : ""}
-    ${s.customer_concerns && s.customer_concerns.length ? `<h3>Customer concerns</h3>${renderBullets(s.customer_concerns)}` : ""}
-    ${s.commitments && s.commitments.length      ? `<h3>Commitments</h3>${renderBullets(s.commitments)}` : ""}
-    ${s.next_steps && s.next_steps.length        ? `<h3>Next steps</h3>${renderBullets(s.next_steps)}` : ""}
-    ${s.follow_up_email ? `<h3>Draft follow-up email</h3><div class="email-draft">${copyBtnHtml(s.follow_up_email, "copy-corner")}${escapeHtml(s.follow_up_email)}</div>` : ""}
-    ${c.transcript ? `<h3>Transcript (verbatim)</h3><div class="transcript-block">${copyBtnHtml(c.transcript, "copy-corner")}${escapeHtml(c.transcript)}</div>` : ""}
-
-    ${pdfButtonsHtml(c.pdf_url, "conversation-" + (c.id || ""))}
-  `;
+  // For conversations, prefix with the linked customer card if any.
+  let prefix = "";
+  if (c.card_id) {
+    const card = (historyState.cards || []).find(x => x.id === c.card_id);
+    if (card) {
+      // Build a mini-hero with what we know about the linked card.
+      prefix = heroCardHtml(
+        { id: card.id },
+        { name: card.name, company: card.company },
+        null,
+      );
+      // Async-load that card's photo too.
+      setTimeout(() => loadHeroPhoto(card.id), 0);
+    }
+  }
+  return prefix + renderConversationSummaryHtml(c);
 }
 
 usersTbody.addEventListener("click", async (e) => {
