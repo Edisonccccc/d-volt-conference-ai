@@ -182,6 +182,7 @@ class User(BaseModel):
     company: Optional[str] = None
     created_at: str
     last_login: Optional[str] = None
+    must_change_password: bool = False
 
 
 class UserCreate(BaseModel):

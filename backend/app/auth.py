@@ -156,6 +156,18 @@ def require_manager(user) -> None:
 # Email allowlist
 # ---------------------------------------------------------------------------
 
+def generate_temp_password(length: int = 12) -> str:
+    """Random URL-safe password without ambiguous characters (0/O, 1/l, etc.).
+
+    Used by the admin password-reset flow. The user types this once to log in,
+    then is forced to set a new password.
+    """
+    # Curated alphabet drops 0/O/o, 1/l/I, etc. so it's safe to read aloud /
+    # type from a Slack message.
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 def email_allowed(email: str) -> bool:
     """Return True if the email's domain is in EMAIL_ALLOWLIST.
 

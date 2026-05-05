@@ -123,6 +123,12 @@ def init_db() -> None:
         if not _has_col("users", "company"):
             conn.execute("ALTER TABLE users ADD COLUMN company TEXT")
             conn.execute("UPDATE users SET company = 'd-volt' WHERE company IS NULL")
+        # `must_change_password` flag — set when an admin resets someone's
+        # password; the user is forced to pick a new one on next login.
+        if not _has_col("users", "must_change_password"):
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
+            )
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
@@ -391,6 +397,7 @@ def list_conversations(
 def _row_to_user(row: sqlite3.Row) -> User:
     keys = row.keys()
     company = row["company"] if "company" in keys else None
+    must_change = bool(row["must_change_password"]) if "must_change_password" in keys else False
     return User(
         id=row["id"],
         email=row["email"],
@@ -399,6 +406,7 @@ def _row_to_user(row: sqlite3.Row) -> User:
         company=company,
         created_at=row["created_at"],
         last_login=row["last_login"],
+        must_change_password=must_change,
     )
 
 
@@ -452,6 +460,19 @@ def update_last_login(user_id: str) -> None:
     with _lock, _connect() as conn:
         conn.execute(
             "UPDATE users SET last_login = ? WHERE id = ?", (now, user_id),
+        )
+        conn.commit()
+
+
+def update_user_password(
+    user_id: str, password_hash: str, *, must_change: bool = False,
+) -> None:
+    """Set a user's password hash and the must_change_password flag."""
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, must_change_password = ? "
+            "WHERE id = ?",
+            (password_hash, 1 if must_change else 0, user_id),
         )
         conn.commit()
 

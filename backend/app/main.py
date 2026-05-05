@@ -20,6 +20,7 @@ load_dotenv()
 from . import storage  # noqa: E402  (intentional: load_dotenv first)
 from .auth import (
     email_allowed,
+    generate_temp_password,
     hash_password,
     make_current_user_dep,
     make_jwt,
@@ -529,4 +530,51 @@ def admin_delete_user(user_id: str, user: User = Depends(current_user)) -> dict:
         raise HTTPException(status_code=400, detail="Cannot delete yourself.")
     if not storage.delete_user(user_id):
         raise HTTPException(status_code=404, detail="User not found.")
+    return {"ok": True}
+
+
+@app.post("/admin/users/{user_id}/reset-password")
+def admin_reset_password(
+    user_id: str, user: User = Depends(current_user),
+) -> dict:
+    """Generate a one-time temp password and force the user to change it on
+    next login. Returns the plaintext temp password ONCE so the manager can
+    share it with the rep out-of-band (Slack, etc.). Manager-only."""
+    require_manager(user)
+    target = storage.get_user_by_id(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target.id == user.id:
+        # Managers shouldn't reset themselves through this flow — they should
+        # use /auth/change-password directly.
+        raise HTTPException(
+            status_code=400,
+            detail="Use 'Change password' for your own account.",
+        )
+
+    temp = generate_temp_password(12)
+    storage.update_user_password(user_id, hash_password(temp), must_change=True)
+    return {
+        "ok": True,
+        "user_id": user_id,
+        "email": target.email,
+        "temp_password": temp,
+        "warning": "Share this with the user via a secure channel. They will be required to change it on next login.",
+    }
+
+
+@app.post("/auth/change-password")
+def change_password(payload: dict, user: User = Depends(current_user)) -> dict:
+    """Logged-in user sets a new password. Clears the must_change_password
+    flag if it was set. Used by both the forced-change flow (after admin
+    reset) and any voluntary change."""
+    new_password = (payload or {}).get("password") or ""
+    if len(new_password) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters.",
+        )
+    if len(new_password) > 200:
+        raise HTTPException(status_code=400, detail="Password too long.")
+    storage.update_user_password(user.id, hash_password(new_password), must_change=False)
     return {"ok": True}

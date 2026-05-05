@@ -130,6 +130,15 @@
   body.unauthenticated main { display: none; }
   body.authenticated #authScreen { display: none; }
   body.role-rep .admin-only { display: none !important; }
+
+  /* Force-change-password gate: when a user's must_change_password flag is
+     true (after an admin reset), every other surface is hidden behind the
+     dedicated change-password screen until they pick a new password. */
+  body.must-change header,
+  body.must-change .tabs-wrap,
+  body.must-change main,
+  body.must-change #authScreen { display: none; }
+  body:not(.must-change) #pwdChangeScreen { display: none; }
   body.role-rep .cost-pill,
   body.role-rep .history-cost-summary { display: none !important; }
 
@@ -561,6 +570,56 @@
   }
   .users-table tr.anomaly { background: rgba(245, 158, 11, 0.06); }
 
+  /* Modal backdrop + sheet — used by the temp-password reveal modal. */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: grid; place-items: center;
+    z-index: 100;
+    padding: 16px;
+    animation: fade-in 160ms ease-out;
+  }
+  .modal-sheet {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    padding: 22px 22px 18px;
+    box-shadow: var(--shadow-md);
+    max-width: 480px;
+    width: 100%;
+  }
+  .modal-sheet h3 {
+    margin: 0 0 8px;
+    font-size: 17px;
+    color: var(--ink);
+    text-transform: none;
+    letter-spacing: -0.012em;
+  }
+  .modal-sheet p {
+    margin: 0 0 14px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .modal-sheet .secret-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 17px;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    word-break: break-all;
+    position: relative;
+    padding-right: 50px;
+  }
+  .modal-sheet .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .modal-sheet .modal-actions button { margin-top: 0; }
+
   /* ----- admin (users) table ---------------------------------------- */
   .users-table {
     width: 100%;
@@ -602,15 +661,24 @@
     font-weight: 600;
     margin-top: 4px;
   }
-  .users-table .row-del-btn {
+  .users-table .row-del-btn,
+  .users-table .row-reset-btn {
     background: transparent;
     color: var(--err);
     border: 1px solid var(--border);
     padding: 6px 10px;
     font-size: 12.5px;
-    margin: 0; min-height: 0;
+    margin: 0 0 0 6px;
+    min-height: 0;
     box-shadow: none;
     width: auto;
+  }
+  .users-table .row-reset-btn {
+    color: var(--accent);
+  }
+  .users-table .row-reset-btn:hover:not([disabled]) {
+    background: var(--accent-soft);
+    border-color: var(--accent);
   }
   .users-table .row-del-btn:hover:not([disabled]) {
     background: var(--err-soft);
@@ -1675,11 +1743,50 @@
       </button>
     </form>
     <div class="auth-status" id="authStatus"></div>
+    <div id="authHint" class="auth-sub" style="margin-top: 14px; font-size: 12.5px; text-align: center;">
+      Forgot your password? Ask your team admin to reset it for you.
+    </div>
     <a href="#" class="auth-toggle" id="authToggle">
       Don't have an account? <b>Sign up</b>
     </a>
   </div>
 </div>
+
+<!-- ===== FORCE PASSWORD CHANGE (after admin reset) ===== -->
+<div id="pwdChangeScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+             stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </span>
+      <span class="name">Set a new password</span>
+    </div>
+    <h1>One more step</h1>
+    <p class="auth-sub">
+      Your password was reset by your team admin. Please pick a new one to
+      continue.
+    </p>
+    <form id="pwdChangeForm" autocomplete="on">
+      <input type="password" id="newPwd" name="new-password" placeholder="New password"
+             autocomplete="new-password" minlength="8" required />
+      <input type="password" id="newPwdConfirm" name="new-password-confirm"
+             placeholder="Confirm new password"
+             autocomplete="new-password" minlength="8" required />
+      <button type="submit" id="pwdChangeSubmit" class="btn-lg">
+        <span class="btn-spinner"></span>
+        <span>Save and continue</span>
+      </button>
+    </form>
+    <div class="auth-status" id="pwdChangeStatus"></div>
+  </div>
+</div>
+
+<style>#pwdChangeScreen { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }</style>
 
 <header>
   <div class="brand">
@@ -2069,17 +2176,84 @@ document.addEventListener("click", async (e) => {
 });
 
 function showAuthScreen() {
-  document.body.classList.remove("loading", "authenticated", "role-rep", "role-manager");
+  document.body.classList.remove("loading", "authenticated", "role-rep", "role-manager", "must-change");
   document.body.classList.add("unauthenticated");
 }
 function showApp() {
-  document.body.classList.remove("loading", "unauthenticated");
+  // If the user's password was just reset by an admin, force the change-password
+  // screen before letting them into the app.
+  if (authUser && authUser.must_change_password) {
+    showForceChangeScreen();
+    return;
+  }
+  document.body.classList.remove("loading", "unauthenticated", "must-change");
   document.body.classList.add("authenticated");
   document.body.classList.toggle("role-rep",     authUser?.role === "rep");
   document.body.classList.toggle("role-manager", authUser?.role === "manager");
   paintUserMenu();
   // Reload card list for the dropdown (needs the auth header now).
   if (typeof loadCards === "function") loadCards();
+}
+
+function showForceChangeScreen() {
+  document.body.classList.remove("loading", "unauthenticated", "authenticated");
+  document.body.classList.add("must-change");
+  // Clear any stale form values so we don't pre-fill the new-password fields.
+  const f = document.getElementById("pwdChangeForm");
+  if (f) f.reset();
+  setPwdChangeStatus("");
+}
+
+// ---- Force-change-password form -----------------------------------------
+const pwdChangeForm    = document.getElementById("pwdChangeForm");
+const pwdChangeSubmit  = document.getElementById("pwdChangeSubmit");
+const pwdChangeStatus  = document.getElementById("pwdChangeStatus");
+const newPwd           = document.getElementById("newPwd");
+const newPwdConfirm    = document.getElementById("newPwdConfirm");
+
+function setPwdChangeStatus(msg, isErr=false) {
+  if (!pwdChangeStatus) return;
+  pwdChangeStatus.textContent = msg || "";
+  pwdChangeStatus.classList.toggle("show", !!msg);
+  pwdChangeStatus.classList.toggle("err", !!isErr);
+}
+
+if (pwdChangeForm) {
+  pwdChangeForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setPwdChangeStatus("");
+    if (newPwd.value !== newPwdConfirm.value) {
+      setPwdChangeStatus("Passwords don't match. Please re-type the confirmation.", true);
+      newPwdConfirm.focus(); newPwdConfirm.select();
+      return;
+    }
+    pwdChangeSubmit.classList.add("loading");
+    pwdChangeSubmit.disabled = true;
+    try {
+      const res = await authFetch("/auth/change-password", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ password: newPwd.value }),
+      });
+      if (!res.ok) {
+        let msg = "Couldn't update password (" + res.status + ")";
+        try { msg = (await res.json()).detail || msg; } catch {}
+        throw new Error(msg);
+      }
+      // Locally clear the flag so subsequent showApp() doesn't bounce us back.
+      if (authUser) {
+        authUser.must_change_password = false;
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(authUser));
+      }
+      pwdChangeForm.reset();
+      showApp();
+    } catch (err) {
+      setPwdChangeStatus(err.message || String(err), true);
+    } finally {
+      pwdChangeSubmit.classList.remove("loading");
+      pwdChangeSubmit.disabled = false;
+    }
+  });
 }
 
 // ---- Auth screen (login + register) --------------------------------------
@@ -3481,8 +3655,9 @@ function renderUserRows(users, team) {
           ${breakdownStr ? `<span class="spend-break">${escapeHtml(breakdownStr)}</span>` : ""}
         </td>
         <td>${fmtDate(u.last_active || u.last_login)}</td>
-        <td style="text-align: right;">
-          <button class="row-del-btn" ${isMe ? "disabled title='Cannot delete yourself'" : ""}>Remove</button>
+        <td style="text-align: right; white-space: nowrap;">
+          <button class="row-reset-btn" ${isMe ? "disabled title='Use Change password for your own account'" : ""}>Reset</button>
+          <button class="row-del-btn"   ${isMe ? "disabled title='Cannot delete yourself'" : ""}>Remove</button>
         </td>
       </tr>`;
   }).join("");
@@ -3790,8 +3965,17 @@ function renderConversationDetailInline(c) {
 }
 
 usersTbody.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".row-del-btn");
-  if (!btn || btn.disabled) return;
+  const delBtn   = e.target.closest(".row-del-btn");
+  const resetBtn = e.target.closest(".row-reset-btn");
+  if (delBtn && !delBtn.disabled) {
+    return handleAdminDelete(delBtn);
+  }
+  if (resetBtn && !resetBtn.disabled) {
+    return handleAdminResetPassword(resetBtn);
+  }
+});
+
+async function handleAdminDelete(btn) {
   const tr = btn.closest("tr");
   const uid = tr.dataset.uid;
   const emailCell = tr.querySelector("td:first-child div + div").textContent;
@@ -3807,7 +3991,59 @@ usersTbody.addEventListener("click", async (e) => {
     setAdminStatus(err.message || String(err), true);
     btn.disabled = false; btn.textContent = "Remove";
   }
-});
+}
+
+async function handleAdminResetPassword(btn) {
+  const tr = btn.closest("tr");
+  const uid = tr.dataset.uid;
+  const emailCell = tr.querySelector("td:first-child div + div").textContent.replace(" · you","");
+  if (!confirm(`Reset password for ${emailCell}?\n\nA new one-time temporary password will be generated. Share it with them via Slack/text — they'll be required to set their own password on next login.`)) {
+    return;
+  }
+  btn.disabled = true; btn.textContent = "Resetting…";
+  try {
+    const r = await authFetch("/admin/users/" + encodeURIComponent(uid) + "/reset-password", {
+      method: "POST",
+    });
+    if (!r.ok) throw new Error("Reset failed (" + r.status + ")");
+    const data = await r.json();
+    showTempPasswordModal(data.email, data.temp_password);
+  } catch (err) {
+    setAdminStatus(err.message || String(err), true);
+  } finally {
+    btn.disabled = false; btn.textContent = "Reset";
+  }
+}
+
+function showTempPasswordModal(email, tempPassword) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-sheet" role="dialog" aria-modal="true">
+      <h3>Temporary password for ${escapeHtml(email)}</h3>
+      <p>
+        Share this with them via Slack or text. They'll be required to choose
+        their own password on next login. <b>This password is shown only once</b> —
+        copy it now.
+      </p>
+      <div class="secret-box" id="tmpPwdBox">
+        <span id="tmpPwdText">${escapeHtml(tempPassword)}</span>
+        ${copyBtnHtml(tempPassword, "copy-corner")}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="tmpPwdClose">Done</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
+  backdrop.querySelector("#tmpPwdClose").addEventListener("click", close);
+  // Esc closes the modal
+  const onEsc = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", onEsc); } };
+  document.addEventListener("keydown", onEsc);
+}
 </script>
 </body>
 </html>
