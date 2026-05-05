@@ -114,11 +114,12 @@ def run_pipeline(card_id: str) -> None:
 
 
 def continue_pipeline(card_id: str) -> None:
-    """Resume a paused-duplicate card: run research + PDF without re-extracting.
+    """Run research + PDF on a card whose extraction is already on the row.
 
-    Triggered by POST /cards/{id}/continue when the user clicks
-    'Rescan anyway'. We skip extraction (already done) and the dedup gate
-    (we just told it to override).
+    Triggered by POST /cards/{id}/continue (rescan-anyway). The endpoint
+    has already handled the dedup-target promote and deletion, so by the
+    time this runs the card_id is the *surviving* row and just needs the
+    back-half of the pipeline.
     """
     record = storage.get_card(card_id)
     if record is None:
@@ -128,9 +129,6 @@ def continue_pipeline(card_id: str) -> None:
     t0 = time.monotonic()
     _banner(f"▶ Resuming pipeline for card {card_id} (rescan-anyway)")
     try:
-        # Clear the dup pointer so the UI doesn't keep flashing the modal
-        # if the user navigates away mid-research.
-        storage.clear_duplicate(card_id)
         _research_and_render(card_id, t0)
     except Exception as exc:  # noqa: BLE001
         elapsed = time.monotonic() - t0

@@ -249,14 +249,85 @@ def mark_duplicate(card_id: str, duplicate_of: str) -> None:
         conn.commit()
 
 
-def clear_duplicate(card_id: str) -> None:
-    """Reset duplicate_of when the user chooses to rescan anyway."""
+def promote_to_target(source_id: str, target_id: str) -> bool:
+    """Copy source's data onto target, used for the rescan-anyway flow.
+
+    Result on target:
+      - extracted_json: replaced with source's (fresh OCR)
+      - research_json:  kept (target's old research stays until fresh
+                        research overwrites it; if fresh fails, we still
+                        have something to show)
+      - photo_path:     replaced with source's
+      - created_at:     bumped to now (so 'last scanned' reflects this scan)
+      - cost_usd/stt:   target += source (audit trail of total $ spent)
+      - status:         left as-is (caller will flip to 'researching')
+      - duplicate_of:   cleared on target (it's the surviving row)
+    Returns True on success, False if either id was missing.
+    """
+    now = datetime.now(timezone.utc).isoformat()
     with _lock, _connect() as conn:
+        src = conn.execute("SELECT * FROM cards WHERE id = ?", (source_id,)).fetchone()
+        tgt = conn.execute("SELECT id FROM cards WHERE id = ?", (target_id,)).fetchone()
+        if src is None or tgt is None:
+            return False
         conn.execute(
-            "UPDATE cards SET duplicate_of = NULL WHERE id = ?",
-            (card_id,),
+            "UPDATE cards SET "
+            "  extracted_json = ?, "
+            "  research_json  = COALESCE(?, research_json), "
+            "  photo_path     = ?, "
+            "  created_at     = ?, "
+            "  duplicate_of   = NULL, "
+            "  cost_usd       = COALESCE(cost_usd, 0) + COALESCE(?, 0), "
+            "  cost_stt       = COALESCE(cost_stt, 0) + COALESCE(?, 0) "
+            "WHERE id = ?",
+            (
+                src["extracted_json"],
+                src["research_json"],
+                src["photo_path"],
+                now,
+                src["cost_usd"],
+                src["cost_stt"],
+                target_id,
+            ),
         )
         conn.commit()
+        return True
+
+
+def delete_card(card_id: str) -> bool:
+    """Delete a card row and its on-disk PDF / photo (if not shared).
+
+    Photo files may now be shared between the source and target after a
+    promote_to_target call (target's photo_path got reassigned to source's
+    file). Before unlinking the photo, we check no other row still points
+    to it. The PDF is always card-specific so it's safe to drop.
+    """
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT photo_path FROM cards WHERE id = ?", (card_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        photo_path = row["photo_path"]
+        conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+        # Only unlink the photo if no surviving row references it.
+        if photo_path:
+            other = conn.execute(
+                "SELECT 1 FROM cards WHERE photo_path = ? LIMIT 1",
+                (photo_path,),
+            ).fetchone()
+            if other is None:
+                try:
+                    Path(photo_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+        conn.commit()
+    # PDFs live under report_dir() and are always card-id-named.
+    try:
+        (REPORT_DIR / f"{card_id}.pdf").unlink(missing_ok=True)
+    except OSError:
+        pass
+    return True
 
 
 def create_card(card_id: str, photo_path: str, user_id: Optional[str] = None) -> CardRecord:

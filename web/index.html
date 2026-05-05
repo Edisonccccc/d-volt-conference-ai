@@ -2939,6 +2939,11 @@ async function pollUntilReady(id) {
         try {
           const r = await authFetch("/cards/" + id + "/continue", { method: "POST" });
           if (!r.ok) throw new Error("continue failed: " + r.status);
+          // Backend promotes this scan onto the existing card row and deletes
+          // the new one (Plan B). The response tells us the surviving id —
+          // switch polling to it so the next /cards/{id} call doesn't 404.
+          const cont = await r.json();
+          if (cont && cont.id && cont.id !== id) id = cont.id;
         } catch (err) {
           showProgress(false);
           setStatus(err.message || String(err), true);

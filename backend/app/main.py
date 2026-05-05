@@ -254,11 +254,15 @@ def continue_card(
     background_tasks: BackgroundTasks,
     user: User = Depends(current_user),
 ) -> dict:
-    """Resume a card that was paused at the dedup gate.
+    """Resume a card that was paused at the dedup gate (Plan B: promote-and-delete).
 
-    Called when the user picks 'Rescan anyway' — runs research + PDF on
-    the existing extraction. Idempotent for non-duplicate states: returns
-    409 if the card isn't in 'duplicate' status to avoid double-billing.
+    The fresh extraction on the source row is copied onto its duplicate_of
+    target, the source row + its photo/PDF are deleted, and research is
+    scheduled on the target. End state: ONE row per (rep, person) with the
+    freshest extraction + research + PDF + photo. Costs from both calls
+    are summed onto the surviving row so the manager dashboard stays accurate.
+
+    Returns the **target id** the frontend should poll from now on.
     """
     record = storage.get_card(card_id, user_id=_scope_for(user))
     if record is None:
@@ -268,6 +272,23 @@ def continue_card(
             status_code=409,
             detail=f"Card is not waiting on dedup decision (status={record.status})",
         )
+
+    target_id = record.duplicate_of
+    target = storage.get_card(target_id) if target_id else None
+    if target_id and target is not None:
+        # Promote the source's data onto the target, delete the source row.
+        # Polling switches to the target id from here on.
+        storage.promote_to_target(card_id, target_id)
+        storage.delete_card(card_id)
+        card_id = target_id
+    else:
+        # The target was deleted between dedup detection and now (rare race).
+        # Fall back to running this card as a fresh, standalone scan.
+        log.warning(
+            "continue_card: duplicate target %r missing, treating %s as fresh.",
+            target_id, card_id,
+        )
+
     storage.update_status(card_id, "researching")
     background_tasks.add_task(continue_pipeline, card_id)
     return {"id": card_id, "status": "researching"}
