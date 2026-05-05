@@ -457,6 +457,54 @@ def list_conversations_endpoint(
 # ===========================================================================
 
 
+@app.post("/auth/scan-card-for-signup")
+async def scan_card_for_signup(photo: UploadFile = File(...)) -> dict:
+    """Pre-registration card scan to auto-fill the signup form.
+
+    No auth required (the user hasn't registered yet). Runs ONLY the
+    extraction step (not research) so it's fast and cheap (~$0.005). The
+    photo is processed in a temp file and deleted immediately — nothing
+    is persisted server-side.
+
+    Cost-protection note: this endpoint is unauthenticated and triggers a
+    paid Claude call. Acceptable risk because (a) Haiku makes each call ~half
+    a cent, (b) the EMAIL_ALLOWLIST gates actual registration anyway. Add
+    rate limiting (slowapi) if abuse becomes a concern.
+    """
+    if photo.content_type and not photo.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Must be an image")
+    contents = await photo.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    if len(contents) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image too large (>25 MB)")
+
+    suffix = Path(photo.filename or "").suffix.lower() or ".jpg"
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}:
+        suffix = ".jpg"
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+    try:
+        from .extraction import extract_card
+        extracted, _cost = extract_card(tmp_path)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    # Return only the fields the signup form needs.
+    return {
+        "name":    extracted.name,
+        "title":   extracted.title,
+        "company": extracted.company,
+        "emails":  extracted.emails or [],
+    }
+
+
 @app.post("/auth/register", response_model=AuthResponse)
 def register(payload: UserCreate) -> AuthResponse:
     """Self-serve registration. Email domain must be on EMAIL_ALLOWLIST."""

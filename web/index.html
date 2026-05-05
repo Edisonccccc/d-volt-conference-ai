@@ -229,6 +229,32 @@
     display: none;
   }
   .auth-status.show { display: block; }
+  .auth-status.ok {
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  /* Compact scan-card button shown only in register mode. */
+  .scan-card-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .scan-card-row[hidden] { display: none; }
+  .scan-card-row button {
+    margin: 0;
+    padding: 10px 16px;
+    width: 100%;
+  }
+  .scan-card-row .scan-link {
+    color: var(--muted);
+    font-size: 12.5px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .scan-card-row .scan-link:hover { text-decoration: underline; color: var(--accent); }
 
   /* ----- user menu in header ---------------------------------------- */
   .user-menu { position: relative; }
@@ -1725,6 +1751,21 @@
     </div>
     <h1 id="authTitle">Sign in</h1>
     <p class="auth-sub" id="authSub">to continue to Conference AI</p>
+    <!-- Scan-card-to-autofill (visible only in register mode) -->
+    <div class="scan-card-row" id="scanCardRow" hidden>
+      <button type="button" id="scanCardBtn" class="secondary">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+          <circle cx="12" cy="13" r="3"/>
+        </svg>
+        <span>Scan your card to auto-fill</span>
+      </button>
+      <a href="#" class="scan-link" id="scanLibraryLink">or pick from library</a>
+      <input type="file" id="scanCameraFile"  accept="image/*" capture="environment" class="vh" />
+      <input type="file" id="scanLibraryFile" accept="image/*" class="vh" />
+    </div>
+
     <form id="authForm" autocomplete="on">
       <input type="text" id="authName" name="name" placeholder="Your name"
              autocomplete="name" hidden />
@@ -2284,6 +2325,7 @@ function applyAuthMode() {
     authCompany.required = true;
     authPasswordConfirm.hidden = false;
     authPasswordConfirm.required = true;
+    if (scanCardRow) scanCardRow.hidden = false;
     authToggle.innerHTML = "Already have an account? <b>Sign in</b>";
   } else {
     authTitle.textContent = "Sign in";
@@ -2296,6 +2338,7 @@ function applyAuthMode() {
     authPasswordConfirm.hidden = true;
     authPasswordConfirm.required = false;
     authPasswordConfirm.value = "";   // don't carry leftover into login
+    if (scanCardRow) scanCardRow.hidden = true;
     authToggle.innerHTML = "Don't have an account? <b>Sign up</b>";
   }
   setAuthStatus("");
@@ -2306,9 +2349,73 @@ authToggle.addEventListener("click", (e) => {
   applyAuthMode();
 });
 
-function setAuthStatus(msg) {
+function setAuthStatus(msg, opts = {}) {
   authStatus.textContent = msg || "";
   authStatus.classList.toggle("show", !!msg);
+  authStatus.classList.toggle("ok", !!opts.ok);
+}
+
+// ---- Scan card → auto-fill the register form -----------------------------
+const scanCardRow     = document.getElementById("scanCardRow");
+const scanCardBtn     = document.getElementById("scanCardBtn");
+const scanLibraryLink = document.getElementById("scanLibraryLink");
+const scanCameraFile  = document.getElementById("scanCameraFile");
+const scanLibraryFile = document.getElementById("scanLibraryFile");
+
+if (scanCardBtn)     scanCardBtn.addEventListener("click", () => scanCameraFile.click());
+if (scanLibraryLink) scanLibraryLink.addEventListener("click", (e) => {
+  e.preventDefault(); scanLibraryFile.click();
+});
+if (scanCameraFile)  scanCameraFile.addEventListener("change", () => {
+  if (scanCameraFile.files?.[0]) scanCardForSignup(scanCameraFile.files[0]);
+  scanCameraFile.value = "";
+});
+if (scanLibraryFile) scanLibraryFile.addEventListener("change", () => {
+  if (scanLibraryFile.files?.[0]) scanCardForSignup(scanLibraryFile.files[0]);
+  scanLibraryFile.value = "";
+});
+
+async function scanCardForSignup(file) {
+  // Visual feedback on the button while the card runs through Claude.
+  const originalLabel = scanCardBtn.querySelector("span").textContent;
+  scanCardBtn.disabled = true;
+  scanCardBtn.querySelector("span").textContent = "Reading card…";
+  setAuthStatus("");
+  try {
+    // Resize for cheaper vision call (same as the main upload flow).
+    let toSend = file;
+    try { toSend = await resizeImageBlob(file, 1024, 0.85); } catch {}
+    const fd = new FormData();
+    fd.append("photo", toSend, "card.jpg");
+    const res = await fetch(API_BASE + "/auth/scan-card-for-signup", {
+      method: "POST", body: fd,
+    });
+    if (!res.ok) {
+      let msg = "Scan failed (" + res.status + ")";
+      try { msg = (await res.json()).detail || msg; } catch {}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    // Pre-fill (any field can be edited after).
+    if (data.name)    authName.value    = data.name;
+    if (data.company) authCompany.value = data.company;
+    if (data.emails && data.emails.length) authEmail.value = data.emails[0];
+    const filled = [
+      data.name && "name",
+      data.company && "company",
+      (data.emails && data.emails.length) && "email",
+    ].filter(Boolean);
+    if (filled.length) {
+      setAuthStatus("Filled in " + filled.join(", ") + " from your card. Edit anything that's wrong, then continue.", { ok: true });
+    } else {
+      setAuthStatus("Couldn't read enough from the card. Please type your details.");
+    }
+  } catch (err) {
+    setAuthStatus(err.message || String(err));
+  } finally {
+    scanCardBtn.disabled = false;
+    scanCardBtn.querySelector("span").textContent = originalLabel;
+  }
 }
 
 authForm.addEventListener("submit", async (e) => {
