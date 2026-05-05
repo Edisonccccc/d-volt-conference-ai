@@ -1293,6 +1293,11 @@
   @media (max-width: 640px) {
     .result-card .field { grid-template-columns: 1fr; }
   }
+  /* When a field's value is a bullet list (e.g. Products), keep the label
+     baseline aligned with the first bullet and let the list take the value
+     column without extra vertical padding. */
+  .result-card .field.field-bullets { align-items: start; padding: 8px 0 6px; }
+  .result-card .field.field-bullets ul.bullets li { font-size: 14px; }
 
   /* Pain-point / concern bullets — amber dot + warning hue. */
   ul.bullets-warn { margin: 4px 0 0; padding-left: 0; list-style: none; }
@@ -2899,13 +2904,24 @@ function renderCardResultHtml(data) {
            ${escapeHtml(r.one_liner)}
          </div>`
       : "";
+    // Industry and Size render as standard field rows (clean for any length).
+    // Products render as a bulleted list since they're usually a multi-item list.
+    const productsHtml = (r.products && r.products.length)
+      ? `<div class="field field-bullets">
+           <b>Products</b>
+           <ul class="bullets" style="margin: 0;">
+             ${r.products.map(p => {
+               const t = String(p ?? "");
+               return `<li><span class="bullet-text">${escapeHtml(t)}</span>${copyBtnHtml(t)}</li>`;
+             }).join("")}
+           </ul>
+         </div>`
+      : "";
     const companyBody = `
       ${oneLinerHtml}
-      ${statStripHtml([
-        ["Industry", r.industry],
-        ["Size",     r.estimated_size],
-        ["Products", r.products],
-      ])}
+      ${renderField("Industry", r.industry)}
+      ${renderField("Size",     r.estimated_size)}
+      ${productsHtml}
     `;
     html += sectionCard("building", "Company", companyBody);
 
