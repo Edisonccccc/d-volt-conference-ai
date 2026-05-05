@@ -458,18 +458,13 @@ def list_conversations_endpoint(
 
 
 @app.post("/auth/scan-card-for-signup")
-async def scan_card_for_signup(photo: UploadFile = File(...)) -> dict:
-    """Pre-registration card scan to auto-fill the signup form.
+async def scan_card_for_signup(
+    photo: UploadFile = File(...),
+) -> dict:
+    """Pre-registration card / badge scan to auto-fill the signup form.
 
-    No auth required (the user hasn't registered yet). Runs ONLY the
-    extraction step (not research) so it's fast and cheap (~$0.005). The
-    photo is processed in a temp file and deleted immediately — nothing
-    is persisted server-side.
-
-    Cost-protection note: this endpoint is unauthenticated and triggers a
-    paid Claude call. Acceptable risk because (a) Haiku makes each call ~half
-    a cent, (b) the EMAIL_ALLOWLIST gates actual registration anyway. Add
-    rate limiting (slowapi) if abuse becomes a concern.
+    No auth required. Runs the extraction (Claude Vision, ~$0.005). Photo
+    is held in a temp file and deleted immediately — nothing is persisted.
     """
     if photo.content_type and not photo.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Must be an image")

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>D-Volt Conference AI Assistant — Card Tester</title>
 <meta name="x-app-version" content="v0.5.0" />
+
 <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)" />
 <style>
@@ -2376,13 +2377,11 @@ if (scanLibraryFile) scanLibraryFile.addEventListener("change", () => {
 });
 
 async function scanCardForSignup(file) {
-  // Visual feedback on the button while the card runs through Claude.
   const originalLabel = scanCardBtn.querySelector("span").textContent;
   scanCardBtn.disabled = true;
   scanCardBtn.querySelector("span").textContent = "Reading card…";
   setAuthStatus("");
   try {
-    // Resize for cheaper vision call (same as the main upload flow).
     let toSend = file;
     try { toSend = await resizeImageBlob(file, 1024, 0.85); } catch {}
     const fd = new FormData();
@@ -2396,17 +2395,19 @@ async function scanCardForSignup(file) {
       throw new Error(msg);
     }
     const data = await res.json();
-    // Pre-fill (any field can be edited after).
-    if (data.name)    authName.value    = data.name;
-    if (data.company) authCompany.value = data.company;
-    if (data.emails && data.emails.length) authEmail.value = data.emails[0];
+    // Only fill fields that aren't already populated (don't clobber what
+    // the user might have started editing).
+    if (!authName.value    && data.name)    authName.value    = data.name;
+    if (!authCompany.value && data.company) authCompany.value = data.company;
+    if (!authEmail.value   && data.emails && data.emails.length) authEmail.value = data.emails[0];
+
     const filled = [
-      data.name && "name",
-      data.company && "company",
-      (data.emails && data.emails.length) && "email",
+      authName.value    && "name",
+      authCompany.value && "company",
+      authEmail.value   && "email",
     ].filter(Boolean);
     if (filled.length) {
-      setAuthStatus("Filled in " + filled.join(", ") + " from your card. Edit anything that's wrong, then continue.", { ok: true });
+      setAuthStatus("Filled in " + filled.join(", ") + " from your card. Edit if needed, then continue.", { ok: true });
     } else {
       setAuthStatus("Couldn't read enough from the card. Please type your details.");
     }
@@ -2864,7 +2865,6 @@ submitBtn.addEventListener("click", async () => {
     try {
       toSend = await resizeImageBlob(chosenFile, 1024, 0.85);
     } catch (e) {
-      // If resize ever fails for any reason, fall back to the original.
       toSend = chosenFile;
     }
     const fd = new FormData();

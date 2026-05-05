@@ -33,8 +33,11 @@ MODEL = os.getenv(
 EXTRACT_TOOL = {
     "name": "record_card_fields",
     "description": (
-        "Record the contact fields read from a business card photo. "
-        "Leave fields blank if they are not visible. Do not invent values."
+        "Record the contact fields read from a business card or conference "
+        "attendee badge photo. Leave fields blank if they are not visible. "
+        "Do not invent values. Conference badges typically show only name, "
+        "company, and city — that's normal, leave email/phone/title empty "
+        "unless they're actually printed on the badge."
     ),
     "input_schema": {
         "type": "object",
@@ -83,10 +86,14 @@ def extract_card(photo_path: str):
     client = make_client(timeout=90.0)
 
     system = (
-        "You are a careful information extractor. You are given a photo of a "
-        "business card. Read every legible field and call the "
-        "`record_card_fields` tool exactly once with the values you read. "
-        "Never guess. If a field is unreadable or absent, omit it."
+        "You are a careful information extractor. You are given a photo of "
+        "a business card OR a conference attendee badge. Read every legible "
+        "field and call the `record_card_fields` tool exactly once with the "
+        "values you read. Conference badges normally show only name + "
+        "company + city; emails/phones/titles are usually NOT printed on "
+        "badges and should be left empty in that case. Never guess. If a "
+        "field is unreadable or absent, omit it. If the photo contains a "
+        "QR code, do not try to decode it — that's handled separately."
     )
 
     final = stream_to_terminal(
@@ -105,8 +112,8 @@ def extract_card(photo_path: str):
                     {
                         "type": "text",
                         "text": (
-                            "Extract every readable field from this business card. "
-                            "Return them via the tool."
+                            "Extract every readable field from this card or "
+                            "conference badge. Return them via the tool."
                         ),
                     },
                 ],
