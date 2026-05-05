@@ -1246,14 +1246,17 @@
   }
 
   .result-card {
-    background: var(--surface-2);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: var(--radius-card);
     padding: 16px;
     margin-top: 12px;
+    box-shadow: var(--shadow-xs);
     animation: fade-in 240ms ease-out;
   }
   @media (prefers-color-scheme: dark) {
-    .result-card { background: color-mix(in srgb, var(--surface-2) 70%, var(--bg)); }
+    /* Slightly raised surface in dark mode so cards stand out from the body. */
+    .result-card { background: color-mix(in srgb, var(--surface) 90%, var(--bg) 10%); }
   }
   .result-card .section-h {
     display: flex;
@@ -1269,8 +1272,8 @@
   .result-card .section-h .section-icon {
     width: 28px; height: 28px;
     border-radius: 8px;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: var(--accent-soft);  /* contrast against white result-card */
+    border: 1px solid transparent;
     display: grid;
     place-items: center;
     color: var(--accent);
@@ -1353,7 +1356,7 @@
   ul.questions li {
     margin: 8px 0;
     padding: 10px 14px;
-    background: var(--surface);
+    background: var(--surface-2);          /* contrast with white result-card */
     border-left: 3px solid var(--accent);
     border-radius: 0 var(--radius-input) var(--radius-input) 0;
     color: var(--ink);
@@ -1390,7 +1393,7 @@
   .stat-strip .stat-chip {
     padding: 4px 10px;
     border-radius: var(--radius-pill);
-    background: var(--surface);
+    background: var(--surface-2);          /* darker than result-card so it pops */
     border: 1px solid var(--border);
     font-size: 12.5px;
     color: var(--ink);
@@ -2694,8 +2697,9 @@ function heroCardHtml(card, ex, r) {
   if (r && r.industry)  subParts.push(escapeHtml(r.industry));
   const sub = subParts.join(" · ");
   const heroId = "heroPhoto-" + (card.id || "x");
-  const placeholder =
-    'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23eee"/></svg>';
+  // 1×1 transparent GIF — no double-quotes inside, so it can't escape out
+  // of the src=""attribute the way the previous inline SVG could.
+  const placeholder = "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
   const catHtml = r && r.company_category
     ? `<div class="hero-cat">${renderCategory(r.company_category, r.category_rationale)}</div>`
     : "";
@@ -2889,8 +2893,14 @@ function renderCardResultHtml(data) {
 
   // ---- Company snapshot ----
   if (r) {
+    const oneLinerHtml = r.one_liner
+      ? `<div class="summary-lead" style="margin-bottom:10px; position: relative; padding-right: 46px;">
+           ${copyBtnHtml(r.one_liner, "copy-corner")}
+           ${escapeHtml(r.one_liner)}
+         </div>`
+      : "";
     const companyBody = `
-      ${r.one_liner ? `<p class="summary-lead" style="margin-bottom:10px;">${escapeHtml(r.one_liner)}</p>` : ""}
+      ${oneLinerHtml}
       ${statStripHtml([
         ["Industry", r.industry],
         ["Size",     r.estimated_size],
@@ -3317,7 +3327,9 @@ function renderConversationSummaryHtml(data) {
   // Lead summary paragraph (hero-equivalent for the conversation)
   if (s.summary) {
     html += sectionCard("fileText", "Summary",
-      `<p class="summary-lead">${escapeHtml(s.summary)}${copyBtnHtml(s.summary, "copy-corner")}</p>`,
+      `<div class="summary-lead" style="position: relative; padding-right: 46px;">
+        ${copyBtnHtml(s.summary, "copy-corner")}${escapeHtml(s.summary)}
+      </div>`,
     );
   }
 
