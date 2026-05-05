@@ -829,13 +829,43 @@
   .drop .drop-text { font-size: 14px; }
   .drop input { display: none; }
 
-  .preview { margin-top: 14px; }
+  .preview { margin-top: 14px; position: relative; }
   .preview img {
     width: 100%;
     border-radius: var(--radius-input);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-xs);
     display: block;
+  }
+  .preview-clear {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.62);
+    color: white;
+    border: 0;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    transition: background var(--transition);
+    min-height: 0;
+  }
+  .preview-clear:hover { background: rgba(0, 0, 0, 0.8); }
+  .preview-clear svg { width: 14px; height: 14px; display: block; }
+
+  /* Once a photo is picked, the panel transitions into "has-photo" state:
+     the drop zone and library button hide, leaving just the preview + the
+     primary "Analyze name card" button. The user clears via the × on the
+     preview, or via "Analyze another" after analysis completes. */
+  #uploadPanel.has-photo .drop,
+  #uploadPanel.has-photo #pickLibraryBtn {
+    display: none;
   }
 
   /* ----- buttons (pill-shaped, subtle hover) ------------------------- */
@@ -1714,7 +1744,7 @@
 <main>
   <div class="tab-content" id="tab-card" role="tabpanel" aria-labelledby="tab-card-btn">
   <div class="card-grid">
-  <section class="panel">
+  <section class="panel" id="uploadPanel">
     <h2><span class="step">1</span>Upload name card</h2>
     <div class="drop" id="drop" role="button" tabindex="0" aria-label="Take a photo of a business card">
       <span class="drop-icon" aria-hidden="true">
@@ -2456,21 +2486,78 @@ async function resizeImageBlob(blob, maxDim = 1024, quality = 0.85) {
   return resized || blob;
 }
 
+const uploadPanel = document.getElementById("uploadPanel");
+let lastPreviewUrl = null;
+
+function setUploadPanelHasPhoto(has) {
+  uploadPanel.classList.toggle("has-photo", !!has);
+}
+
 function handleFile(f) {
   chosenFile = f;
-  const url = URL.createObjectURL(f);
-  preview.innerHTML = `<img src="${url}" alt="card preview" />`;
+  if (lastPreviewUrl) URL.revokeObjectURL(lastPreviewUrl);
+  lastPreviewUrl = URL.createObjectURL(f);
+  // Inject preview <img> + a corner × button so the user can clear the photo
+  // without going through the "Analyze another" path.
+  preview.innerHTML = `
+    <img src="${lastPreviewUrl}" alt="card preview" />
+    <button class="preview-clear" type="button" id="previewClearBtn"
+            aria-label="Clear this photo and pick a different one">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6"  y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>`;
   submitBtn.disabled = false;
-  document.getElementById("dropText").textContent = f.name;
+  setUploadPanelHasPhoto(true);
   setStatus("");
-  // Reset both inputs so picking the same file again still fires `change`.
+  // Reset both file inputs so picking the same file again still fires `change`.
   cameraFile.value = "";
   libraryFile.value = "";
 }
 
+/** Tear down the upload UI back to its initial empty state — used by the
+ *  preview × button and by the "Analyze another" button after analysis. */
+function resetUploadState({ hideResultPanel = false } = {}) {
+  chosenFile = null;
+  if (lastPreviewUrl) { URL.revokeObjectURL(lastPreviewUrl); lastPreviewUrl = null; }
+  preview.innerHTML = "";
+  setUploadPanelHasPhoto(false);
+  setBtnLoading(false, "Analyze name card");
+  submitBtn.disabled = true;
+  document.getElementById("dropText").textContent = "Take a photo";
+  setStatus("");
+  cameraFile.value = "";
+  libraryFile.value = "";
+  if (hideResultPanel) {
+    resultPanel.style.display = "none";
+    resetStages();
+    setChipState(chip, "pending");
+    showProgress(false);
+    resultEl.innerHTML = "";
+  }
+}
+
+// Delegated handler for the corner × on the preview.
+preview.addEventListener("click", (e) => {
+  if (e.target.closest("#previewClearBtn")) {
+    e.preventDefault();
+    e.stopPropagation();
+    resetUploadState();
+  }
+});
+
 // ---- submit + poll --------------------------------------------------------
 
 submitBtn.addEventListener("click", async () => {
+  // After a successful analysis the same button is repurposed as
+  // "Analyze another" — clicking it should reset the panel rather than
+  // re-submitting the same photo to the API.
+  if (submitLabel.textContent === "Analyze another") {
+    resetUploadState({ hideResultPanel: true });
+    return;
+  }
   if (!chosenFile) return;
   setBtnLoading(true, "Uploading…");
   setStatus("");
