@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -129,6 +130,10 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
             )
+        # `duplicate_of` points to a prior card (same user, same name+company)
+        # when this scan was detected as a re-scan of an existing customer.
+        if not _has_col("cards", "duplicate_of"):
+            conn.execute("ALTER TABLE cards ADD COLUMN duplicate_of TEXT")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
@@ -160,8 +165,9 @@ def report_dir() -> Path:
 
 def _row_to_record(row: sqlite3.Row) -> CardRecord:
     keys = row.keys()
-    user_id  = row["user_id"]  if "user_id"  in keys else None
-    cost_usd = row["cost_usd"] if "cost_usd" in keys else None
+    user_id      = row["user_id"]      if "user_id"      in keys else None
+    cost_usd     = row["cost_usd"]     if "cost_usd"     in keys else None
+    duplicate_of = row["duplicate_of"] if "duplicate_of" in keys else None
     return CardRecord(
         id=row["id"],
         status=row["status"],
@@ -176,7 +182,81 @@ def _row_to_record(row: sqlite3.Row) -> CardRecord:
         error=row["error"],
         user_id=user_id,
         cost_usd=cost_usd,
+        duplicate_of=duplicate_of,
     )
+
+
+# ---- dedup helpers ---------------------------------------------------------
+
+def _normalize_for_dedup(s: Optional[str]) -> str:
+    """Lowercase, replace common punctuation with space, collapse whitespace.
+
+    Used to compare names and company strings across scans where casing,
+    punctuation, or spacing might vary slightly between two photos of the
+    same card.
+    """
+    if not s:
+        return ""
+    s = s.lower().strip()
+    s = re.sub(r"[.,/\\\-_&]+", " ", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+
+def find_duplicate_card(
+    user_id: str,
+    name: Optional[str],
+    company: Optional[str],
+    *,
+    exclude_id: Optional[str] = None,
+) -> Optional[CardRecord]:
+    """Return the most recent ready card from this user with the same
+    (normalized name, normalized company), or None.
+
+    Per-rep dedup: each salesperson sees their own scan history; a card
+    one rep scanned doesn't shadow another rep's scan of the same person.
+    Only matches against status='ready' so failed/in-flight cards don't
+    poison the lookup.
+    """
+    n_name = _normalize_for_dedup(name)
+    n_comp = _normalize_for_dedup(company)
+    if not n_name or not n_comp:
+        return None  # need both to dedupe — too risky on one alone
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM cards WHERE user_id = ? AND status = 'ready' "
+            "AND (id != ? OR ? IS NULL) "
+            "ORDER BY created_at DESC LIMIT 200",
+            (user_id, exclude_id or "", exclude_id),
+        ).fetchall()
+    for row in rows:
+        rec = _row_to_record(row)
+        if not rec.extracted:
+            continue
+        if (_normalize_for_dedup(rec.extracted.name) == n_name and
+            _normalize_for_dedup(rec.extracted.company) == n_comp):
+            return rec
+    return None
+
+
+def mark_duplicate(card_id: str, duplicate_of: str) -> None:
+    """Set status='duplicate' and stash the matched card's id."""
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE cards SET status = 'duplicate', duplicate_of = ? WHERE id = ?",
+            (duplicate_of, card_id),
+        )
+        conn.commit()
+
+
+def clear_duplicate(card_id: str) -> None:
+    """Reset duplicate_of when the user chooses to rescan anyway."""
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE cards SET duplicate_of = NULL WHERE id = ?",
+            (card_id,),
+        )
+        conn.commit()
 
 
 def create_card(card_id: str, photo_path: str, user_id: Optional[str] = None) -> CardRecord:

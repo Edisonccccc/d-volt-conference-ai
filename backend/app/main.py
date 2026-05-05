@@ -35,7 +35,7 @@ from .models import (
     UserLogin,
 )
 from .pdf_report import render_conversation_report
-from .pipeline import run_pipeline
+from .pipeline import continue_pipeline, run_pipeline
 from .transcribe import transcribe_audio
 
 
@@ -173,6 +173,19 @@ def get_card_endpoint(card_id: str, user: User = Depends(current_user)) -> dict:
     # Costs are manager-only.
     if user.role != "manager":
         payload.pop("cost_usd", None)
+    # When this card was paused as a duplicate, attach a thin summary of the
+    # original card so the frontend can render the "existing customer" prompt
+    # without a second roundtrip.
+    if record.status == "duplicate" and record.duplicate_of:
+        prior = storage.get_card(record.duplicate_of, user_id=_scope_for(user))
+        if prior is not None:
+            payload["duplicate_info"] = {
+                "id":         prior.id,
+                "created_at": prior.created_at,
+                "name":       prior.extracted.name    if prior.extracted else None,
+                "company":    prior.extracted.company if prior.extracted else None,
+                "title":      prior.extracted.title   if prior.extracted else None,
+            }
     return payload
 
 
@@ -233,6 +246,31 @@ def email_report(
             "pdf_url": f"/cards/{card_id}/report.pdf",
         }
     )
+
+
+@app.post("/cards/{card_id}/continue")
+def continue_card(
+    card_id: str,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
+) -> dict:
+    """Resume a card that was paused at the dedup gate.
+
+    Called when the user picks 'Rescan anyway' — runs research + PDF on
+    the existing extraction. Idempotent for non-duplicate states: returns
+    409 if the card isn't in 'duplicate' status to avoid double-billing.
+    """
+    record = storage.get_card(card_id, user_id=_scope_for(user))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if record.status != "duplicate":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Card is not waiting on dedup decision (status={record.status})",
+        )
+    storage.update_status(card_id, "researching")
+    background_tasks.add_task(continue_pipeline, card_id)
+    return {"id": card_id, "status": "researching"}
 
 
 @app.get("/cards")

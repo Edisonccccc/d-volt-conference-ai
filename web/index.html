@@ -646,6 +646,16 @@
     margin-top: 14px;
   }
   .modal-sheet .modal-actions button { margin-top: 0; }
+  .modal-sheet .dup-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    padding: 12px 14px;
+    margin: 4px 0 10px;
+  }
+  .modal-sheet .dup-name    { font-weight: 600; color: var(--ink); font-size: 15px; }
+  .modal-sheet .dup-company { color: var(--muted);  font-size: 13px; margin-top: 2px; }
+  .modal-sheet .dup-when    { color: var(--muted);  font-size: 12px; margin-top: 6px; }
 
   /* ----- admin (users) table ---------------------------------------- */
   .users-table {
@@ -1084,6 +1094,7 @@
   .chip[data-state="transcribing"] { background: var(--transcribing-soft); color: var(--transcribing); border-color: transparent; }
   .chip[data-state="summarizing"]  { background: var(--summarizing-soft);  color: var(--summarizing);  border-color: transparent; }
   .chip[data-state="ready"]        { background: var(--success-soft);      color: var(--success);      border-color: transparent; }
+  .chip[data-state="duplicate"]    { background: var(--summarizing-soft);  color: var(--summarizing);  border-color: transparent; }
   .chip[data-state="error"]        { background: var(--err-soft);          color: var(--err);          border-color: transparent; }
   /* Subtle pulse on the dot when the system is actively working. */
   .chip[data-state="recording"]::before,
@@ -2693,6 +2704,13 @@ function applyStatusToStages(status, hasExtracted, hasResearch, hasPdf) {
       ["extract","research","brief"].forEach(k => setStage(k, "done"));
       if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
       break;
+    case "duplicate":
+      // Pipeline paused after extract — research/brief never started.
+      // Mark extract done so the green dot lands, stop the timer, leave the
+      // remaining stages idle. The modal explains what's happening.
+      if (!stageEl("extract").classList.contains("done")) setStage("extract", "done");
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+      break;
     case "error":
       // mark whichever step is currently active as failed
       const cur = stagesEl.querySelector(".stage.active");
@@ -2904,6 +2922,48 @@ async function pollUntilReady(id) {
       showProgress(false);
       setBtnLoading(false, "Analyze another");
       setStatus("");
+      return;
+    }
+    if (data.status === "duplicate") {
+      // The same rep already scanned this person+company. Pause the spinner
+      // and let the user choose: view the prior result (no new research call)
+      // or rescan anyway (resume the pipeline at /cards/{id}/continue).
+      showProgress(false);
+      setBtnLoading(false, "Analyzing…");
+      setStatus("Existing customer detected.", false);
+      const choice = await showDuplicateModal(data);
+      if (choice === "rescan") {
+        setStatus("Rescanning…", false);
+        showProgress(true);
+        setBtnLoading(true, "Rescanning…");
+        try {
+          const r = await authFetch("/cards/" + id + "/continue", { method: "POST" });
+          if (!r.ok) throw new Error("continue failed: " + r.status);
+        } catch (err) {
+          showProgress(false);
+          setStatus(err.message || String(err), true);
+          setBtnLoading(false, "Try again");
+          return;
+        }
+        // Fall through — the next loop iteration will see status='researching'.
+        continue;
+      }
+      // "View existing": fetch the prior card and render it in place.
+      const priorId = data.duplicate_info && data.duplicate_info.id;
+      if (priorId) {
+        try {
+          const r = await authFetch("/cards/" + priorId);
+          if (r.ok) {
+            const prior = await r.json();
+            setChipState(chip, prior.status || "ready");
+            applyStatusToStages(prior.status || "ready", !!prior.extracted,
+                                !!prior.research, !!prior.pdf_url);
+            renderPartial(prior);
+          }
+        } catch (_) { /* keep the duplicate's partial render as fallback */ }
+      }
+      setBtnLoading(false, "Analyze another");
+      setStatus("Showing previous scan.", false);
       return;
     }
     if (data.status === "error") {
@@ -4120,6 +4180,58 @@ async function handleAdminResetPassword(btn) {
   } finally {
     btn.disabled = false; btn.textContent = "Reset";
   }
+}
+
+/** Show the "existing customer" prompt for a paused-duplicate card.
+ *  Returns a Promise resolving to "view" (default / cancel) or "rescan". */
+function showDuplicateModal(data) {
+  const info  = data.duplicate_info || {};
+  const ex    = data.extracted || {};
+  const name  = info.name    || ex.name    || "this contact";
+  const comp  = info.company || ex.company || "";
+  // Format the prior scan date in the user's locale, e.g. "May 4, 2026".
+  let when = "";
+  if (info.created_at) {
+    try {
+      const d = new Date(info.created_at);
+      when = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    } catch { when = info.created_at; }
+  }
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = (choice) => {
+      if (resolved) return;
+      resolved = true;
+      backdrop.remove();
+      document.removeEventListener("keydown", onEsc);
+      resolve(choice);
+    };
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="dupTitle">
+        <h3 id="dupTitle">Existing customer</h3>
+        <p>You've scanned this contact before. View what you already have, or pay for a fresh research call?</p>
+        <div class="dup-card">
+          <div class="dup-name">${escapeHtml(name)}</div>
+          ${comp ? `<div class="dup-company">${escapeHtml(comp)}</div>` : ""}
+          ${when ? `<div class="dup-when">Last scanned ${escapeHtml(when)}</div>` : ""}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" id="dupRescan">Rescan anyway</button>
+          <button type="button" id="dupView">View existing</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    backdrop.querySelector("#dupView").addEventListener("click",   () => finish("view"));
+    backdrop.querySelector("#dupRescan").addEventListener("click", () => finish("rescan"));
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) finish("view"); });
+    const onEsc = (e) => { if (e.key === "Escape") finish("view"); };
+    document.addEventListener("keydown", onEsc);
+  });
 }
 
 function showTempPasswordModal(email, tempPassword) {

@@ -78,7 +78,17 @@ class CompanyResearch(BaseModel):
     sources: List[str] = Field(default_factory=list)
 
 
-CardStatus = Literal["pending", "extracting", "researching", "ready", "error"]
+CardStatus = Literal[
+    "pending",
+    "extracting",
+    "researching",
+    "ready",
+    "error",
+    # 'duplicate' = extraction completed, but another card from this same rep
+    # already has the same (name, company). Pipeline pauses here so the user
+    # can decide between viewing the prior result and re-running research.
+    "duplicate",
+]
 
 
 class CardRecord(BaseModel):
@@ -94,6 +104,10 @@ class CardRecord(BaseModel):
         None,
         description="Sum of vendor charges to produce this card (extraction + research). Manager-only via API.",
     )
+    # When status == 'duplicate', this points to the previously-scanned card
+    # (same rep, same name+company) that we matched against. The frontend
+    # uses it to fetch and display the prior result.
+    duplicate_of: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
