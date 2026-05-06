@@ -140,12 +140,13 @@ SUBMIT_NEWS = {
     },
 }
 
-# Tool 3: verified contact LinkedIn + title.
+# Tool 3: verified contact LinkedIn + title + a short personal brief.
 SUBMIT_CONTACT = {
     "name": "submit_contact_info",
     "description": (
-        "Deliver the contact's PERSONAL LinkedIn URL and verified title. "
-        "Leave fields blank if not confidently found."
+        "Deliver the contact's PERSONAL LinkedIn URL, verified title, and "
+        "a short factual brief about who they are professionally. Leave "
+        "any field blank if you can't find it confidently."
     ),
     "input_schema": {
         "type": "object",
@@ -162,6 +163,16 @@ SUBMIT_CONTACT = {
                 "description": (
                     "The contact's current title from LinkedIn or the "
                     "company website. Leave blank if not found."
+                ),
+            },
+            "contact_brief": {
+                "type": "string",
+                "description": (
+                    "A 1-2 sentence factual brief about the person: what "
+                    "they do, what they're responsible for, anything "
+                    "notable from their public profile. Skip the brief "
+                    "(empty string) if you can't find them confidently — "
+                    "do NOT invent facts about a real individual."
                 ),
             },
             "sources": {
@@ -241,7 +252,8 @@ bullets in `recent_news`. Empty list is fine if you find nothing relevant.
 
 def _contact_prompt(card: ExtractedCard) -> str:
     return f"""\
-You are verifying a sales contact's LinkedIn profile and current title.
+You are researching a sales contact: who they are, what they do, and
+how to reach them on LinkedIn.
 
 Contact info:
 {_contact_lines(card)}
@@ -253,6 +265,11 @@ GOAL:
   confidently match this specific person.
 - Find their current title (LinkedIn or the company team/about page).
   Put it in `contact_title_verified` (may confirm or correct the card).
+- From their LinkedIn bio + any other authoritative public source, write
+  `contact_brief`: 1-2 factual sentences on what they're responsible for
+  and anything notable (years in the role, prior companies, focus area).
+  If you can't confidently identify them, LEAVE THE BRIEF EMPTY rather
+  than guess — never invent biographical facts about a real person.
 
 Run up to 2 web searches, then call `submit_contact_info` exactly once.
 """
@@ -358,6 +375,7 @@ def _merge_into_research(
     return CompanyResearch(
         contact_linkedin=contact.get("contact_linkedin") or None,
         contact_title_verified=contact.get("contact_title_verified") or None,
+        contact_brief=contact.get("contact_brief") or None,
         company_website=basics.get("company_website") or None,
         one_liner=basics.get("one_liner") or None,
         company_category=basics.get("company_category") or None,

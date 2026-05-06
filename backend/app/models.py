@@ -41,6 +41,14 @@ class CompanyResearch(BaseModel):
             "site, used to confirm or correct what was on the card."
         ),
     )
+    contact_brief: Optional[str] = Field(
+        None,
+        description=(
+            "Short factual brief about the person: 1-2 sentences on what "
+            "they do, what they're responsible for, and anything notable "
+            "from their public profile. Empty if confidence is low."
+        ),
+    )
     company_website: Optional[str] = Field(
         None, description="The company's official website (homepage URL)."
     )

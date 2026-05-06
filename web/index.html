@@ -798,6 +798,160 @@
   }
   .ccr-status-only { color: var(--muted); font-style: italic; }
 
+  /* ----- Library: customer-centric list ------------------------------ */
+  .library-tagline {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 4px 0 12px;
+    line-height: 1.5;
+  }
+
+  .library-customer {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: box-shadow 120ms ease, border-color 120ms ease;
+  }
+  .library-customer:hover { border-color: var(--accent-soft, #c4b5fd); }
+  .library-customer.expanded { box-shadow: var(--shadow-md); border-color: var(--accent); }
+
+  .library-customer .lr-summary {
+    display: grid;
+    grid-template-columns: 56px 1fr 24px;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    cursor: pointer;
+  }
+  .lr-avatar {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .lr-main { min-width: 0; }
+  .lr-name-line {
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--ink);
+    line-height: 1.3;
+  }
+  .lr-name-line .lr-title {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .lr-company-line {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .lr-conv-count {
+    display: inline-block;
+    margin-left: 0;
+    color: var(--summarizing);
+    font-weight: 500;
+  }
+  .lr-briefs { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+  .lr-brief {
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.45;
+    /* Two-line clamp keeps the row compact even with chatty briefs. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .lr-brief-label {
+    display: inline-block;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 4px;
+  }
+  .library-customer .chev {
+    width: 18px; height: 18px;
+    color: var(--muted);
+    transition: transform 200ms ease;
+  }
+  .library-customer.expanded .chev { transform: rotate(180deg); }
+
+  .library-customer-detail {
+    border-top: 1px solid var(--border);
+    padding: 16px;
+    background: var(--surface);
+  }
+
+  /* Per-customer subtabs */
+  .cust-subtabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .cust-subtab {
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: 13px;
+    margin: 0;
+    cursor: pointer;
+    transition: color 120ms ease, border-color 120ms ease;
+    border-radius: 0;
+  }
+  .cust-subtab:hover { color: var(--ink); }
+  .cust-subtab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .cust-subtab-pane { /* container for the active subtab content */ }
+
+  /* Orphan-conversation dock at the bottom of the list */
+  .orphan-dock {
+    margin-top: 18px;
+    border-top: 1px dashed var(--border);
+    padding-top: 14px;
+  }
+  .orphan-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 8px 4px;
+    margin: 0;
+    text-align: left;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius-input);
+  }
+  .orphan-toggle:hover { color: var(--ink); }
+  .orphan-toggle .chev { transition: transform 200ms ease; }
+  .orphan-dock.open .orphan-toggle .chev { transform: rotate(180deg); }
+  .orphan-count {
+    display: inline-block;
+    padding: 1px 8px;
+    background: var(--err-soft);
+    color: var(--err);
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .orphan-help { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .orphan-list { margin-top: 10px; }
+
   /* ----- Library: edit + delete actions on detail panels ------------- */
   .library-actions {
     display: flex;
@@ -1704,6 +1858,21 @@
     line-height: 1.4;
   }
   .hero-card .hero-cat { margin-top: 10px; }
+  .hero-card .hero-brief {
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .hero-card .hero-brief-label {
+    display: inline-block;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    margin-right: 4px;
+  }
   @media (max-width: 480px) {
     .hero-card .hero-photo { width: 64px; height: 64px; }
     .hero-card .hero-name { font-size: 17px; }
@@ -2471,12 +2640,9 @@
   <div class="tab-content" id="tab-history" role="tabpanel" aria-labelledby="tab-history-btn" hidden>
   <section class="panel">
     <h2><span class="step">L</span>Library<span class="chip" id="historyCountChip">0</span></h2>
-    <div class="subtabs">
-      <button class="subtab active" data-section="cards" id="sub-cards-btn">Contacts</button>
-      <button class="subtab" data-section="conversations" id="sub-conv-btn">Conversations</button>
-    </div>
+    <p class="library-tagline">One customer, one profile. Their card brief and every conversation you've had with them, in one place.</p>
     <input type="text" id="historySearch" class="search-box"
-           placeholder="Search by name, company, or content…" />
+           placeholder="Search customers by name or company…" />
     <div class="history-list" id="historyList">
       <div class="history-empty">Loading…</div>
     </div>
@@ -3604,6 +3770,15 @@ function heroCardHtml(card, ex, r) {
   // 1×1 transparent GIF — no double-quotes inside, so it can't escape out
   // of the src=""attribute the way the previous inline SVG could.
   const placeholder = "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+  // Two short briefs: "who this person is" and "what their company does".
+  // Both come from research; absent for cards still mid-extract or where
+  // the model couldn't find anything authoritative.
+  const personBrief = r && r.contact_brief
+    ? `<div class="hero-brief"><span class="hero-brief-label">About</span> ${escapeHtml(r.contact_brief)}</div>`
+    : "";
+  const companyBrief = r && r.one_liner
+    ? `<div class="hero-brief"><span class="hero-brief-label">Company</span> ${escapeHtml(r.one_liner)}</div>`
+    : "";
   const catHtml = r && r.company_category
     ? `<div class="hero-cat">${renderCategory(r.company_category, r.category_rationale)}</div>`
     : "";
@@ -3613,6 +3788,8 @@ function heroCardHtml(card, ex, r) {
       <div class="hero-info">
         <div class="hero-name">${escapeHtml(name)}</div>
         ${sub ? `<div class="hero-sub">${sub}</div>` : ""}
+        ${personBrief}
+        ${companyBrief}
         ${catHtml}
       </div>
     </div>`;
@@ -3965,16 +4142,27 @@ async function startConversationForCard(cardId) {
   if (cardSelect) cardSelect.value = cardId;
 }
 
-/** Click on a conversation row → switch to History, expand that conversation. */
+/** Click on a conversation row in the card brief → jump to Library and
+ *  expand the relevant customer with the Conversations subtab open.
+ *  If the conversation is unattached, fall back to opening the orphan dock
+ *  and expanding the row directly. */
 async function openConversationInHistory(convId) {
   setActiveTab("history");
-  // Force the Conversations subtab so the row is in the list we render.
-  historyState.section = "conversations";
-  if (subCardsBtn) subCardsBtn.classList.remove("active");
-  if (subConvBtn)  subConvBtn.classList.add("active");
-  historyState.expandedId = convId;
-  // setActiveTab("history") already kicks loadHistory(); when it resolves it
-  // calls renderHistoryList(), which sees expandedId and loads the detail.
+  // We need the conversations list loaded to find which card (if any) owns this.
+  if (!historyState.conversations) {
+    try { await loadHistory(); } catch (_) {}
+  }
+  const conv = (historyState.conversations || []).find(c => c.id === convId);
+  if (conv && conv.card_id) {
+    // Expand the parent customer with the Conversations subtab active.
+    historyState.expandedId = conv.card_id;
+    historyState.subtab = "conversations";
+  } else {
+    // Orphan: open the dock and expand this conversation row.
+    historyState.unlinkedOpen = true;
+    historyState.expandedId = convId;
+  }
+  renderHistoryList();
 }
 
 // Body-level delegated click handler for the dynamically-rendered section.
@@ -4679,15 +4867,22 @@ function renderUserRows(users, team) {
 const historyListEl     = document.getElementById("historyList");
 const historyCountChip  = document.getElementById("historyCountChip");
 const historySearchEl   = document.getElementById("historySearch");
-const subCardsBtn       = document.getElementById("sub-cards-btn");
-const subConvBtn        = document.getElementById("sub-conv-btn");
+// Top-level subtab buttons were removed when the Library went customer-centric.
+// Some legacy helpers still reference these names; map them to null so any
+// guarded access (`if (subCardsBtn)`) becomes a no-op rather than a crash.
+const subCardsBtn       = null;
+const subConvBtn        = null;
 
 let historyState = {
-  section: "cards",       // "cards" | "conversations"
+  // section is no longer user-controlled — kept for backwards compatibility
+  // with internal helpers; the customer list is the only top-level view now.
+  section: "cards",
   cards: null,            // array from /cards
   conversations: null,    // array from /conversations
   searchQuery: "",
-  expandedId: null,       // id currently expanded
+  expandedId: null,       // id currently expanded (card OR orphan conv)
+  subtab: "profile",      // per-customer subtab: "profile" | "conversations"
+  unlinkedOpen: false,    // dock-accordion state
   detailCache: {},        // id -> full record (avoid refetch)
 };
 
@@ -4703,15 +4898,7 @@ function fmtRelative(iso) {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-[subCardsBtn, subConvBtn].forEach(btn => {
-  btn.addEventListener("click", () => {
-    historyState.section = btn.dataset.section;
-    subCardsBtn.classList.toggle("active", historyState.section === "cards");
-    subConvBtn.classList.toggle("active",  historyState.section === "conversations");
-    historyState.expandedId = null;
-    renderHistoryList();
-  });
-});
+// (Top-level Library subtabs removed — view is unified customer list now.)
 
 historySearchEl.addEventListener("input", () => {
   historyState.searchQuery = historySearchEl.value.toLowerCase().trim();
@@ -4736,49 +4923,159 @@ async function loadHistory() {
 }
 
 function renderHistoryList() {
-  const isCards = historyState.section === "cards";
-  const items = isCards
-    ? (historyState.cards || [])
-    : (historyState.conversations || []);
+  // Customer-centric Library: one row per scanned card. Conversations live
+  // inside each customer's expanded view. Truly orphan conversations (no
+  // card_id) get a small dock at the bottom so they're reachable for
+  // re-linking but don't clutter the main list.
+  const cards = historyState.cards || [];
+  const conversations = historyState.conversations || [];
 
-  // Filter client-side.
   const q = historyState.searchQuery;
-  const filtered = !q ? items : items.filter(it => {
-    const hay = isCards
-      ? `${it.name || ""} ${it.company || ""} ${it.id || ""}`
-      : `${it.customer_name || ""} ${it.customer_company || ""} ${it.id || ""}`;
-    return hay.toLowerCase().includes(q);
-  });
+  const filteredCards = !q ? cards : cards.filter(c =>
+    `${c.name || ""} ${c.company || ""}`.toLowerCase().includes(q)
+  );
 
-  historyCountChip.textContent = filtered.length;
-
-  if (filtered.length === 0) {
-    historyListEl.innerHTML = `<div class="history-empty">${q ? "No results match your search." : "Nothing here yet — analyze a card or record a conversation to start."}</div>`;
-    return;
-  }
-
-  // Manager-only total at the top: sum of cost_usd across the filtered list.
-  // CSS hides .history-cost-summary for reps, so this is also safe if the
-  // backend ever forgets to strip cost_usd.
-  let totalsHtml = "";
-  if (authUser?.role === "manager") {
-    const total = filtered.reduce(
-      (acc, x) => acc + (typeof x.cost_usd === "number" ? x.cost_usd : 0), 0
-    );
-    if (total > 0) {
-      const label = isCards ? "card scans" : "conversations";
-      totalsHtml = `<div class="history-cost-summary">Vendor cost across ${filtered.length} ${label}: <b>${fmtCost(total)}</b></div>`;
+  // Conversation count per card — drives the "(N)" badge on the subtab.
+  const convCountByCard = new Map();
+  for (const c of conversations) {
+    if (c.card_id) {
+      convCountByCard.set(c.card_id, (convCountByCard.get(c.card_id) || 0) + 1);
     }
   }
 
-  historyListEl.innerHTML = totalsHtml + (isCards
-    ? filtered.map(it => renderHistoryRow(it, renderCardSummary(it))).join("")
-    : renderConversationsGrouped(filtered));
+  // Orphans (no card_id). Filtered by search too — match against transcript
+  // start so reps can grep their own notes.
+  const orphans = conversations.filter(c => !c.card_id);
+  const filteredOrphans = !q ? orphans : orphans.filter(c =>
+    `${c.customer_name || ""} ${c.customer_company || ""} ${c.id || ""}`
+      .toLowerCase()
+      .includes(q)
+  );
+
+  // Headline count: how many customers in your library.
+  historyCountChip.textContent = filteredCards.length;
+
+  if (filteredCards.length === 0 && filteredOrphans.length === 0) {
+    historyListEl.innerHTML = `<div class="history-empty">${
+      q ? "No results match your search."
+        : "Nothing here yet — scan a card to start your customer library."
+    }</div>`;
+    return;
+  }
+
+  // Manager-only spend total (across cards + orphan convs).
+  let totalsHtml = "";
+  if (authUser?.role === "manager") {
+    const total = [...filteredCards, ...filteredOrphans].reduce(
+      (acc, x) => acc + (typeof x.cost_usd === "number" ? x.cost_usd : 0), 0,
+    );
+    if (total > 0) {
+      totalsHtml = `<div class="history-cost-summary">Vendor cost across ${filteredCards.length} customer${filteredCards.length === 1 ? "" : "s"}: <b>${fmtCost(total)}</b></div>`;
+    }
+  }
+
+  const customersHtml = filteredCards.map(c =>
+    renderCustomerRow(c, convCountByCard.get(c.id) || 0)
+  ).join("");
+
+  // Bottom dock for orphans — collapsed accordion. Click to reveal.
+  let orphansHtml = "";
+  if (filteredOrphans.length > 0) {
+    const open = !!historyState.unlinkedOpen;
+    orphansHtml = `
+      <div class="orphan-dock ${open ? "open" : ""}">
+        <button type="button" class="orphan-toggle" id="orphanToggle">
+          <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          Unlinked conversations <span class="orphan-count">${filteredOrphans.length}</span>
+          <span class="orphan-help">— attach them to a contact or delete</span>
+        </button>
+        ${open
+          ? `<div class="orphan-list">${
+              filteredOrphans.map(c => renderHistoryRow(c, renderConversationSummary(c))).join("")
+            }</div>`
+          : ""}
+      </div>`;
+  }
+
+  historyListEl.innerHTML = totalsHtml + customersHtml + orphansHtml;
+
+  // Async-load the photos for visible customer rows so the avatars fill in.
+  for (const c of filteredCards) {
+    if (c.id) loadCustomerRowPhoto(c.id);
+  }
 
   // If something is expanded, fetch + render its full detail asynchronously.
   if (historyState.expandedId) {
     loadAndRenderDetail(historyState.expandedId);
   }
+}
+
+/** Collapsed customer row: avatar, name + title, company + briefs. */
+function renderCustomerRow(c, convCount) {
+  const isExpanded = historyState.expandedId === c.id;
+  const avatarId = "lib-avatar-" + c.id;
+  const placeholder = "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+  const personLine = [
+    c.name || "(unknown contact)",
+    c.title ? `<span class="lr-title">${escapeHtml(c.title)}</span>` : "",
+  ].filter(Boolean).join(" ");
+  // Briefs come from the cached light list (not yet — list endpoint returns
+  // basic columns only). For richer briefs in the row, we surface what the
+  // detail-cache has, falling back to a one-line summary line.
+  const cached = historyState.detailCache[c.id];
+  const personBrief  = cached?.research?.contact_brief || null;
+  const companyBrief = cached?.research?.one_liner     || null;
+  const briefHtml = (personBrief || companyBrief) ? `
+    <div class="lr-briefs">
+      ${personBrief  ? `<div class="lr-brief"><span class="lr-brief-label">About</span> ${escapeHtml(personBrief)}</div>`  : ""}
+      ${companyBrief ? `<div class="lr-brief"><span class="lr-brief-label">Company</span> ${escapeHtml(companyBrief)}</div>` : ""}
+    </div>` : "";
+  const convBadge = convCount > 0
+    ? `<span class="lr-conv-count">${convCount} conversation${convCount === 1 ? "" : "s"}</span>`
+    : "";
+
+  return `
+    <div class="library-customer ${isExpanded ? "expanded" : ""}" data-id="${escapeHtml(c.id)}">
+      <div class="lr-summary">
+        <img class="lr-avatar" id="${avatarId}" alt="" src="${placeholder}"/>
+        <div class="lr-main">
+          <div class="lr-name-line">${escapeHtml(c.name || "(unknown contact)")}${
+            c.title ? ` <span class="lr-title">— ${escapeHtml(c.title)}</span>` : ""
+          }</div>
+          <div class="lr-company-line">${escapeHtml(c.company || "—")}${convBadge ? " · " + convBadge : ""}</div>
+          ${briefHtml}
+        </div>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      ${isExpanded
+        ? `<div class="library-customer-detail" id="hd-${escapeHtml(c.id)}">${
+            renderHistoryDetailLoading()
+          }</div>`
+        : ""}
+    </div>`;
+}
+
+/** Async-load the customer-row avatar (uses /cards/{id}/photo). */
+async function loadCustomerRowPhoto(cardId) {
+  const img = document.getElementById("lib-avatar-" + cardId);
+  if (!img) return;
+  // Don't re-fetch if we already swapped a blob:URL onto this <img>.
+  if (img.src && img.src.startsWith("blob:")) return;
+  try {
+    const r = await authFetch("/cards/" + encodeURIComponent(cardId) + "/photo");
+    if (!r.ok) return;
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    img.src = url;
+    img.addEventListener("load",  () => URL.revokeObjectURL(url), { once: true });
+    img.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+  } catch { /* non-fatal */ }
 }
 
 function renderHistoryRow(it, summaryHtml) {
@@ -4963,13 +5260,57 @@ historyListEl.addEventListener("click", (e) => {
     return;
   }
 
-  const item = e.target.closest(".history-item");
-  if (!item) return;
-  // Don't toggle if user clicked something interactive inside an expanded detail
-  if (e.target.closest("a, button, input, textarea, label, form")) return;
-  const id = item.dataset.id;
-  historyState.expandedId = (historyState.expandedId === id) ? null : id;
-  renderHistoryList();
+  // Per-customer subtab switching (Profile / Conversations).
+  const subtabBtn = e.target.closest(".cust-subtab");
+  if (subtabBtn) {
+    e.stopPropagation();
+    historyState.subtab = subtabBtn.dataset.custSubtab;
+    const cardId = subtabBtn.dataset.cardId;
+    if (historyState.expandedId === cardId) {
+      // Re-render just this customer's pane from cache.
+      const cached = historyState.detailCache[cardId];
+      const detailEl = document.getElementById("hd-" + cardId);
+      if (cached && detailEl) {
+        detailEl.innerHTML = renderCustomerExpanded(cached);
+        if (cardId) loadHeroPhoto(cardId);
+        if (historyState.subtab === "conversations") loadCardConversations(cardId);
+      }
+    }
+    return;
+  }
+
+  // Orphan dock toggle
+  if (e.target.closest("#orphanToggle")) {
+    e.stopPropagation();
+    historyState.unlinkedOpen = !historyState.unlinkedOpen;
+    renderHistoryList();
+    return;
+  }
+
+  // Customer row toggle (expand/collapse the per-contact detail).
+  const customer = e.target.closest(".library-customer");
+  if (customer) {
+    if (e.target.closest("a, button, input, textarea, label, form")) return;
+    const id = customer.dataset.id;
+    if (historyState.expandedId === id) {
+      historyState.expandedId = null;
+    } else {
+      historyState.expandedId = id;
+      historyState.subtab = "profile";   // reset to Profile each open
+    }
+    renderHistoryList();
+    return;
+  }
+
+  // Orphan-conversation row toggle (inside the dock).
+  const orphanItem = e.target.closest(".history-item");
+  if (orphanItem) {
+    if (e.target.closest("a, button, input, textarea, label, form")) return;
+    const id = orphanItem.dataset.id;
+    historyState.expandedId = (historyState.expandedId === id) ? null : id;
+    renderHistoryList();
+    return;
+  }
 });
 
 // Form submit handlers (delegated so they survive innerHTML re-renders).
@@ -5009,17 +5350,22 @@ function enterConvEditMode(convId) {
   if (ta) ta.focus();
 }
 
-/** Cancel an active edit; re-render the read-only detail from cache. */
+/** Cancel an active edit; re-render the read-only detail from cache.
+ *  Decides between card and conversation by inspecting the cached payload —
+ *  cards have extracted/research, conversations have transcript/summary. */
 function exitEditMode(id) {
   const detailEl = document.getElementById("hd-" + id);
   const cached = historyState.detailCache[id];
   if (!detailEl || !cached) return;
-  detailEl.innerHTML = historyState.section === "cards"
-    ? renderCardDetailInline(cached)
-    : renderConversationDetailInline(cached);
-  if (historyState.section === "cards" && cached.id) {
-    loadHeroPhoto(cached.id);
-    loadCardConversations(cached.id);
+  const isCard = ("photo_path" in cached) || ("extracted" in cached) || ("research" in cached);
+  if (isCard) {
+    detailEl.innerHTML = renderCustomerExpanded(cached);
+    if (cached.id) {
+      loadHeroPhoto(cached.id);
+      if ((historyState.subtab || "profile") === "conversations") loadCardConversations(cached.id);
+    }
+  } else {
+    detailEl.innerHTML = renderConversationDetailInline(cached);
   }
 }
 
@@ -5297,8 +5643,11 @@ async function loadAndRenderDetail(id) {
   if (!detailEl) return;
   let full = historyState.detailCache[id];
   if (!full) {
+    // Resolve which entity this id belongs to. The Library lists both cards
+    // (customers) and conversations (orphans), so check cards first.
+    const isCardId = (historyState.cards || []).some(c => c.id === id);
+    const path = (isCardId ? "/cards/" : "/conversations/") + encodeURIComponent(id);
     try {
-      const path = (historyState.section === "cards" ? "/cards/" : "/conversations/") + encodeURIComponent(id);
       const r = await authFetch(path);
       if (!r.ok) throw new Error("Failed to load detail (" + r.status + ")");
       full = await r.json();
@@ -5308,16 +5657,39 @@ async function loadAndRenderDetail(id) {
       return;
     }
   }
-  detailEl.innerHTML = historyState.section === "cards"
-    ? renderCardDetailInline(full)
-    : renderConversationDetailInline(full);
-  // The hero card has an empty <img>; fetch + assign the actual photo now
-  // that the DOM has been replaced.
-  if (historyState.section === "cards" && full.id) {
-    loadHeroPhoto(full.id);
-    // Populate the Conversations subsection in the same expanded card.
-    loadCardConversations(full.id);
+  // Customer cards render with the new Profile/Conversations subtab shell.
+  // Orphan conversations (in the dock) keep the simpler conversation detail.
+  const isCard = ("photo_path" in full) || ("extracted" in full) || ("research" in full);
+  if (isCard) {
+    detailEl.innerHTML = renderCustomerExpanded(full);
+    if (full.id) loadHeroPhoto(full.id);
+    // Initial subtab matches whatever's in state (defaults to profile).
+    if ((historyState.subtab || "profile") === "conversations") {
+      loadCardConversations(full.id);
+    }
+  } else {
+    detailEl.innerHTML = renderConversationDetailInline(full);
   }
+}
+
+/** Wrap a card's full payload in the per-customer subtab shell.
+ *  Profile = the original card brief renderer + manage actions.
+ *  Conversations = the Tier 2 conversations-section host (lazy-loaded). */
+function renderCustomerExpanded(c) {
+  const sub = historyState.subtab || "profile";
+  const profileActive = sub === "profile";
+  return `
+    <div class="cust-subtabs" role="tablist">
+      <button type="button" class="cust-subtab ${profileActive ? "active" : ""}"
+              data-cust-subtab="profile" data-card-id="${escapeHtml(c.id)}">Profile</button>
+      <button type="button" class="cust-subtab ${!profileActive ? "active" : ""}"
+              data-cust-subtab="conversations" data-card-id="${escapeHtml(c.id)}">Conversations</button>
+    </div>
+    <div class="cust-subtab-pane">
+      ${profileActive
+        ? renderCardResultHtml(c) + renderCardManageActions(c)
+        : `<div id="card-convs-${escapeHtml(c.id)}" class="card-convs-host"></div>`}
+    </div>`;
 }
 
 /** Library tab — expanded card row uses the same Level-C renderer as the
