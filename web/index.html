@@ -657,6 +657,209 @@
   .modal-sheet .dup-company { color: var(--muted);  font-size: 13px; margin-top: 2px; }
   .modal-sheet .dup-when    { color: var(--muted);  font-size: 12px; margin-top: 6px; }
 
+  /* ----- Conversation mode (Record / Type) -------------------------- */
+  .conv-mode-tabs {
+    margin-top: 10px;
+    margin-bottom: 4px;
+  }
+  .conv-mode-tabs .subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .conv-text-input {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 140px;
+    box-sizing: border-box;
+  }
+  .conv-text-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft, rgba(124, 58, 237, 0.15));
+  }
+  .conv-text-input:disabled {
+    background: var(--surface-2);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+  .conv-text-hint {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* ----- Tier 2: Conversations section on card brief ------------------ */
+  .card-convs-host { margin-top: 14px; }
+  .card-convs-section {
+    margin-top: 6px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+  }
+  .card-convs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .card-convs-title {
+    margin: 0;
+    font-size: 15px;
+    color: var(--ink);
+    text-transform: none;
+    letter-spacing: -0.01em;
+  }
+  .card-convs-count {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 8px;
+    background: var(--surface-2);
+    color: var(--muted);
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 500;
+    vertical-align: middle;
+  }
+  .card-convs-add-btn {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 13px;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-input);
+    cursor: pointer;
+  }
+  .card-convs-add-btn:hover { background: var(--accent-soft, rgba(124, 58, 237, 0.08)); }
+  .card-convs-empty-text {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .card-convs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .card-conv-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    cursor: pointer;
+    margin: 0;
+    color: var(--ink);
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .card-conv-row:hover {
+    background: var(--surface);
+    border-color: var(--accent);
+  }
+  .ccr-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .ccr-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--summarizing);
+    font-weight: 500;
+  }
+  .ccr-when { color: var(--muted); }
+  .ccr-excerpt {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ink);
+    /* Single-line clamp for compact rows; expand by clicking through. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ccr-status-only { color: var(--muted); font-style: italic; }
+
+  /* ----- Conversation detail link/change-contact actions -------------- */
+  /* Compact action row above an expanded conversation summary. */
+  .conv-link-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: 4px 0 12px;
+  }
+  .conv-link-actions button {
+    margin-top: 0;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  /* Prominent CTA when the conversation has no contact attached. */
+  .conv-link-prompt {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin: 4px 0 12px;
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-card);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .conv-link-prompt-text { flex: 1; }
+  .conv-link-prompt button {
+    margin-top: 0;
+    padding: 6px 12px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  /* ----- Card-picker modal (used by the link-conversation flow) ------- */
+  .link-picker-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    margin-top: 10px;
+  }
+  .link-picker-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    margin: 0;
+    color: var(--ink);
+    transition: background 120ms ease;
+    border-radius: 0;
+  }
+  .link-picker-row:last-child { border-bottom: none; }
+  .link-picker-row:hover { background: var(--surface-2); }
+  .link-picker-row.loading { opacity: 0.5; cursor: wait; }
+  .lpr-name    { font-weight: 600; font-size: 14px; }
+  .lpr-company { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
   /* ----- Card → Conversation link banner ----------------------------- */
   /* Shown above the card result when there's an active recording the user
      can attach this contact to. Subtle accent border so it draws the eye
@@ -2053,7 +2256,7 @@
 
   <div class="tab-content" id="tab-conversation" role="tabpanel" aria-labelledby="tab-conv-btn" hidden>
   <section class="panel" id="convPanel">
-    <h2><span class="step">1</span>Live conversation<span class="chip" id="convChip">idle</span></h2>
+    <h2><span class="step">1</span>Conversation<span class="chip" id="convChip">idle</span></h2>
 
     <div class="row">
       <label class="grow" style="display:flex; align-items:center; gap:8px;">
@@ -2062,23 +2265,69 @@
           <option value="">— None —</option>
         </select>
       </label>
-      <button id="startBtn" class="btn-lg">
-        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    </div>
+
+    <!-- Mode switcher: Record (live audio) or Type (after-the-fact note). -->
+    <div class="subtabs conv-mode-tabs" role="tablist" id="convModeTabs">
+      <button class="subtab active" data-mode="record" id="modeRecordBtn" type="button">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="9" y="2" width="6" height="12" rx="3"/>
           <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
           <line x1="12" y1="19" x2="12" y2="23"/>
-          <line x1="8" y1="23" x2="16" y2="23"/>
         </svg>
-        <span>Start conversation</span>
+        Record
       </button>
-      <button id="stopBtn" class="danger btn-lg" style="display:none;">
-        <span class="rec-light"></span>
-        <svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <rect x="6" y="6" width="12" height="12" rx="2"/>
+      <button class="subtab" data-mode="text" id="modeTextBtn" type="button">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
         </svg>
-        <span>Stop</span>
+        Type a note
       </button>
+    </div>
+
+    <!-- Pane: Record (default) -->
+    <div id="modeRecordPane">
+      <div class="row" style="margin-top: 8px;">
+        <div class="grow"></div>
+        <button id="startBtn" class="btn-lg">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="12" rx="3"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          <span>Start conversation</span>
+        </button>
+        <button id="stopBtn" class="danger btn-lg" style="display:none;">
+          <span class="rec-light"></span>
+          <svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+          <span>Stop</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pane: Type a note (after-the-fact written summary) -->
+    <div id="modeTextPane" hidden>
+      <textarea id="convTextInput" class="conv-text-input" rows="8"
+        placeholder="Describe the conversation — who you spoke with, what they care about, any commitments, and what to follow up on. Claude will turn this into the same structured summary as a recorded call."></textarea>
+      <div class="row" style="margin-top: 10px; align-items:center;">
+        <span class="conv-text-hint" id="convTextHint">0 characters</span>
+        <div class="grow"></div>
+        <button id="submitTextBtn" class="btn-lg" disabled>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M22 2L11 13"/>
+            <path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+          </svg>
+          <span>Save &amp; summarize</span>
+        </button>
+      </div>
     </div>
 
     <div class="status" id="convStatus"></div>
@@ -3109,6 +3358,9 @@ async function pollUntilReady(id) {
       // the rep can attach this contact to (record-then-scan journey).
       lastCardData = data;
       refreshLinkBanner();
+      // Load any conversations already linked to this card so the brief
+      // doubles as the customer profile view.
+      loadCardConversations(data.id);
       return;
     }
     if (data.status === "duplicate") {
@@ -3155,6 +3407,7 @@ async function pollUntilReady(id) {
             // can still attach an active conversation to this existing contact.
             lastCardData = prior;
             refreshLinkBanner();
+            loadCardConversations(prior.id);
           }
         } catch (_) { /* keep the duplicate's partial render as fallback */ }
       }
@@ -3479,6 +3732,14 @@ function renderCardResultHtml(data) {
       `<div class="skeleton long"></div><div class="skeleton long"></div><div class="skeleton short"></div>`);
   }
 
+  // ---- Conversations linked to this contact (Tier 2) ----
+  // Customer-centric view: every conversation that's been attached to this
+  // profile, newest first, with a "+ Add" entry point. Populated async by
+  // loadCardConversations() once the DOM is in place.
+  if (data.id) {
+    html += `<div id="card-convs-${escapeHtml(data.id)}" class="card-convs-host"></div>`;
+  }
+
   // ---- PDF actions + error ----
   html += pdfButtonsHtml(data.pdf_url, "sales-brief-" + (data.id || ""));
   if (data.error) {
@@ -3488,6 +3749,140 @@ function renderCardResultHtml(data) {
   html += `<div class="meta-line" style="margin-top:10px;">id ${escapeHtml(data.id || "")} · created ${escapeHtml(data.created_at || "")}</div>`;
   return html;
 }
+
+// ---- Tier 2: Conversations section on the card brief ---------------------
+// Async populates the placeholder div emitted by renderCardResultHtml. The
+// section is the customer-profile view of all conversations linked to this
+// card, with an "+ Add" entry point that jumps to the Conversation tab with
+// the card pre-selected.
+
+async function loadCardConversations(cardId) {
+  if (!cardId) return;
+  const host = document.getElementById("card-convs-" + cardId);
+  if (!host) return;
+
+  // Light skeleton while we fetch — avoids a layout pop when data lands.
+  host.innerHTML = `
+    <div class="card-convs-section">
+      <div class="card-convs-header">
+        <h3 class="card-convs-title">Conversations</h3>
+      </div>
+      <div class="card-convs-list">
+        <div class="skeleton long"></div>
+      </div>
+    </div>`;
+
+  let convs;
+  try {
+    const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/conversations`);
+    if (!r.ok) throw new Error("status " + r.status);
+    convs = await r.json();
+  } catch (_) {
+    // Non-fatal — drop the section entirely so we don't show a broken state.
+    host.innerHTML = "";
+    return;
+  }
+
+  const headerHtml = `
+    <div class="card-convs-header">
+      <h3 class="card-convs-title">
+        Conversations${convs.length ? ` <span class="card-convs-count">${convs.length}</span>` : ""}
+      </h3>
+      <button type="button" class="card-convs-add-btn" data-add-card-id="${escapeHtml(cardId)}">
+        + Add
+      </button>
+    </div>`;
+
+  if (!convs.length) {
+    host.innerHTML = `
+      <div class="card-convs-section card-convs-empty">
+        ${headerHtml}
+        <div class="card-convs-empty-text">
+          No conversations yet. Record a call or type a note about your interactions with this contact.
+        </div>
+      </div>`;
+    return;
+  }
+
+  host.innerHTML = `
+    <div class="card-convs-section">
+      ${headerHtml}
+      <div class="card-convs-list">${convs.map(renderCardConversationRow).join("")}</div>
+    </div>`;
+}
+
+function renderCardConversationRow(c) {
+  const dt  = c.started_at ? fmtRelative(c.started_at) : "";
+  const dur = fmtDuration(c.started_at, c.ended_at);
+  // Mic icon for recorded conversations, pencil for typed notes.
+  const typeIcon = c.has_audio
+    ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+         <rect x="9" y="2" width="6" height="12" rx="3"/>
+         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+         <line x1="12" y1="19" x2="12" y2="23"/>
+       </svg>`
+    : `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+       </svg>`;
+  const typeLabel = c.has_audio ? "Recorded" : "Typed";
+  const excerpt = c.excerpt
+    ? escapeHtml(c.excerpt)
+    : `<span class="ccr-status-only">${escapeHtml(
+        c.status === "ready" ? "(no summary text)"
+                             : "Status: " + (c.status || "unknown")
+      )}</span>`;
+  return `
+    <button type="button" class="card-conv-row" data-open-conv-id="${escapeHtml(c.id)}">
+      <div class="ccr-meta">
+        <span class="ccr-type">${typeIcon}<span>${escapeHtml(typeLabel)}</span></span>
+        <span class="ccr-when">${escapeHtml(dt)}${dur ? " · " + escapeHtml(dur) : ""}</span>
+      </div>
+      <div class="ccr-excerpt">${excerpt}</div>
+    </button>`;
+}
+
+/** "+ Add conversation" jumps to the Conversation tab with this card
+ *  pre-selected so the rep can immediately record or type. */
+async function startConversationForCard(cardId) {
+  setActiveTab("conversation");
+  // Make sure the dropdown has this card option (might be a freshly-created
+  // card the rep just analyzed and the cached list is stale).
+  if (cardSelect && !Array.from(cardSelect.options).some(o => o.value === cardId)) {
+    try { await loadCards(); } catch (_) {}
+  }
+  if (cardSelect) cardSelect.value = cardId;
+}
+
+/** Click on a conversation row → switch to History, expand that conversation. */
+async function openConversationInHistory(convId) {
+  setActiveTab("history");
+  // Force the Conversations subtab so the row is in the list we render.
+  historyState.section = "conversations";
+  if (subCardsBtn) subCardsBtn.classList.remove("active");
+  if (subConvBtn)  subConvBtn.classList.add("active");
+  historyState.expandedId = convId;
+  // setActiveTab("history") already kicks loadHistory(); when it resolves it
+  // calls renderHistoryList(), which sees expandedId and loads the detail.
+}
+
+// Body-level delegated click handler for the dynamically-rendered section.
+document.body.addEventListener("click", (e) => {
+  const addBtn = e.target.closest(".card-convs-add-btn");
+  if (addBtn) {
+    e.preventDefault(); e.stopPropagation();
+    startConversationForCard(addBtn.dataset.addCardId);
+    return;
+  }
+  const convRow = e.target.closest(".card-conv-row");
+  if (convRow) {
+    e.preventDefault(); e.stopPropagation();
+    openConversationInHistory(convRow.dataset.openConvId);
+    return;
+  }
+});
 
 // ===========================================================================
 // Slice 2: Live conversation (MediaRecorder + server-side Whisper + Claude)
@@ -3503,6 +3898,15 @@ const transcriptEl = document.getElementById("transcript");
 const summaryEl = document.getElementById("summary");
 const convProgressEl = document.getElementById("convProgress");
 const convStagesEl   = document.getElementById("convStages");
+
+// Type-a-note mode (Tier 1)
+const modeRecordBtn  = document.getElementById("modeRecordBtn");
+const modeTextBtn    = document.getElementById("modeTextBtn");
+const modeRecordPane = document.getElementById("modeRecordPane");
+const modeTextPane   = document.getElementById("modeTextPane");
+const convTextInput  = document.getElementById("convTextInput");
+const convTextHint   = document.getElementById("convTextHint");
+const submitTextBtn  = document.getElementById("submitTextBtn");
 
 let mediaRecorder = null;
 let mediaStream = null;
@@ -3733,6 +4137,120 @@ function stopRecording() {
     try { mediaRecorder.stop(); } catch (_) { onStop(); }
   });
 }
+
+// ---- Conversation mode switcher (Record / Type) -------------------------
+
+let convMode = "record";   // "record" | "text"
+
+function setConvMode(mode) {
+  convMode = mode;
+  const isText = (mode === "text");
+  modeRecordBtn.classList.toggle("active", !isText);
+  modeTextBtn.classList.toggle("active",   isText);
+  modeRecordPane.hidden = isText;
+  modeTextPane.hidden   = !isText;
+  // Don't allow switching while a recording is in progress — too easy to
+  // throw away an active mediaRecorder.
+}
+modeRecordBtn.addEventListener("click", () => {
+  if (mediaRecorder && mediaRecorder.state === "recording") return;
+  setConvMode("record");
+});
+modeTextBtn.addEventListener("click", () => {
+  if (mediaRecorder && mediaRecorder.state === "recording") return;
+  setConvMode("text");
+});
+
+// Live character count + submit-button gate. Empty/too-short text isn't
+// worth a Claude summarization round-trip.
+const TEXT_MIN_CHARS = 30;
+function refreshTextHint() {
+  const n = (convTextInput.value || "").trim().length;
+  convTextHint.textContent = n < TEXT_MIN_CHARS
+    ? `${n} characters (min ${TEXT_MIN_CHARS} to submit)`
+    : `${n} characters`;
+  submitTextBtn.disabled = n < TEXT_MIN_CHARS;
+}
+convTextInput.addEventListener("input", refreshTextHint);
+refreshTextHint();
+
+submitTextBtn.addEventListener("click", async () => {
+  const transcript = (convTextInput.value || "").trim();
+  if (transcript.length < TEXT_MIN_CHARS) return;
+  // Reset render area + drive the same UI plumbing as the audio path so the
+  // poll loop can update stages/summary without special-casing text.
+  transcriptEl.innerHTML = "";
+  summaryEl.innerHTML = "";
+  setConvStatus("");
+  resetConvStages();
+
+  // Lock controls while in flight.
+  submitTextBtn.disabled = true;
+  convTextInput.disabled = true;
+  modeRecordBtn.disabled = true;
+  modeTextBtn.disabled   = true;
+
+  setChipState(convChip, "uploading");
+  showConvProgress(true);
+  // Text path skips upload + transcribe — short-circuit those visually.
+  setConvStage("upload",    "done", "skipped");
+  setConvStage("transcribe","done", "skipped");
+  setConvStage("summarize", "active");
+  startConvTicker("summarize");
+  summaryEl.innerHTML = summarySkeletonHtml();
+
+  try {
+    const cardId = cardSelect.value || null;
+    // Step 1: create the row.
+    let res = await authFetch("/conversations", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ card_id: cardId }),
+    });
+    if (!res.ok) throw new Error("Could not start conversation: " + res.status);
+    const created = await res.json();
+    convId = created.id;
+    liveConv = {
+      id: convId,
+      startedAt: Date.now(),
+      status: "summarizing",
+      cardId: cardId,
+    };
+    refreshLinkBanner();
+
+    // Step 2: send the typed text via /finish (same endpoint browser-side STT
+    // would use). Backend writes transcript, sets status='summarizing', and
+    // schedules the summary task.
+    res = await authFetch(`/conversations/${convId}/finish`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ transcript }),
+    });
+    if (!res.ok) throw new Error("Submit failed: " + res.status + " " + (await res.text()));
+
+    // Render the typed transcript immediately so the user sees what they sent.
+    transcriptEl.innerHTML = escapeHtml(transcript);
+    transcriptEl.scrollTop = 0;
+    setConvStatus("Summarizing with Claude…");
+
+    pollConversation(convId);
+  } catch (err) {
+    setChipState(convChip, "error");
+    setConvStatus(err.message || String(err), true);
+    setConvStage("summarize", "failed", "submit failed");
+    showConvProgress(false);
+    summaryEl.innerHTML = "";
+    if (liveConv && liveConv.id === convId) { liveConv = null; refreshLinkBanner(); }
+  } finally {
+    // Re-enable controls after the request resolves; pollConversation will
+    // continue updating UI in the background.
+    submitTextBtn.disabled = false;
+    convTextInput.disabled = false;
+    modeRecordBtn.disabled = false;
+    modeTextBtn.disabled   = false;
+    refreshTextHint();
+  }
+});
 
 startBtn.addEventListener("click", async () => {
   transcriptEl.innerHTML = "";
@@ -4286,6 +4804,18 @@ function renderHistoryDetailLoading() {
 }
 
 historyListEl.addEventListener("click", (e) => {
+  // Link/change-contact button — handled before the row toggle so the click
+  // doesn't also collapse the detail.
+  const linkBtn = e.target.closest(".conv-link-btn");
+  if (linkBtn) {
+    e.stopPropagation();
+    openLinkContactPicker(
+      linkBtn.dataset.convId,
+      linkBtn.dataset.cardId || null,
+    );
+    return;
+  }
+
   const item = e.target.closest(".history-item");
   if (!item) return;
   // Don't toggle if user clicked something interactive inside an expanded detail
@@ -4294,6 +4824,140 @@ historyListEl.addEventListener("click", (e) => {
   historyState.expandedId = (historyState.expandedId === id) ? null : id;
   renderHistoryList();
 });
+
+/** Open a modal that lets the rep search through their cards and pick one
+ *  to attach to a conversation (or unlink an existing attachment). */
+async function openLinkContactPicker(convId, currentCardId) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-sheet" role="dialog" aria-modal="true" style="max-width: 540px;">
+      <h3>${currentCardId ? "Change contact" : "Link to a contact"}</h3>
+      <p>Pick a customer profile to attach this conversation to.</p>
+      <input type="search" class="search-box" id="linkPickerSearch"
+             placeholder="Search by name or company…" autocomplete="off"/>
+      <div class="link-picker-list" id="linkPickerList">
+        <div class="history-empty">Loading…</div>
+      </div>
+      <div class="modal-actions">
+        ${currentCardId
+          ? `<button type="button" class="secondary" id="linkPickerUnlink">Unlink</button>`
+          : ""}
+        <div style="flex:1"></div>
+        <button type="button" class="secondary" id="linkPickerCancel">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+
+  const close = () => {
+    backdrop.remove();
+    document.removeEventListener("keydown", onEsc);
+  };
+  const onEsc = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onEsc);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  document.getElementById("linkPickerCancel").addEventListener("click", close);
+
+  const unlinkBtn = document.getElementById("linkPickerUnlink");
+  if (unlinkBtn) {
+    unlinkBtn.addEventListener("click", async () => {
+      unlinkBtn.disabled = true; unlinkBtn.textContent = "Unlinking…";
+      try {
+        await patchConversationCard(convId, null);
+        close();
+        await loadHistory();
+      } catch (err) {
+        unlinkBtn.disabled = false;
+        unlinkBtn.textContent = "Unlink";
+        setHistoryError(err.message || String(err));
+      }
+    });
+  }
+
+  // Source the cards from the cache the History tab already loaded — falls
+  // back to fetching if the user opened the picker before History rendered.
+  let cards = historyState.cards;
+  if (!cards) {
+    try {
+      const r = await authFetch("/cards?limit=100");
+      cards = r.ok ? await r.json() : [];
+    } catch { cards = []; }
+  }
+  // Only finished cards make sense as link targets; hide the current one too.
+  cards = (cards || []).filter(c => c.status === "ready" && c.id !== currentCardId);
+
+  const listEl = document.getElementById("linkPickerList");
+  const searchEl = document.getElementById("linkPickerSearch");
+
+  function renderList(filter) {
+    const f = (filter || "").toLowerCase().trim();
+    const filtered = !f ? cards : cards.filter(c =>
+      `${c.name||""} ${c.company||""}`.toLowerCase().includes(f)
+    );
+    if (!filtered.length) {
+      listEl.innerHTML = `<div class="history-empty">${
+        cards.length === 0 ? "No contacts yet — scan a card first."
+                           : "No matches."
+      }</div>`;
+      return;
+    }
+    listEl.innerHTML = filtered.map(c => `
+      <button type="button" class="link-picker-row" data-id="${escapeHtml(c.id)}">
+        <div class="lpr-name">${escapeHtml(c.name || "(unknown name)")}</div>
+        <div class="lpr-company">${escapeHtml(c.company || "—")}</div>
+      </button>
+    `).join("");
+  }
+  renderList("");
+  searchEl.addEventListener("input", () => renderList(searchEl.value));
+  searchEl.focus();
+
+  listEl.addEventListener("click", async (e) => {
+    const row = e.target.closest(".link-picker-row");
+    if (!row) return;
+    const newCardId = row.dataset.id;
+    row.disabled = true;
+    row.classList.add("loading");
+    try {
+      await patchConversationCard(convId, newCardId);
+      close();
+      await loadHistory();
+    } catch (err) {
+      row.disabled = false;
+      row.classList.remove("loading");
+      setHistoryError(err.message || String(err));
+    }
+  });
+}
+
+/** PATCH the conversation's card_id; clears the detail-cache entry so the
+ *  next expansion re-fetches with the new linkage. */
+async function patchConversationCard(convId, cardId) {
+  const r = await authFetch(`/conversations/${convId}`, {
+    method: "PATCH",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ card_id: cardId }),
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error("Update failed: " + r.status + (detail ? " — " + detail : ""));
+  }
+  delete historyState.detailCache[convId];
+}
+
+function setHistoryError(msg) {
+  // Lightweight feedback channel — hide the message after a few seconds so it
+  // doesn't linger if the next action succeeds.
+  const el = document.querySelector("#tab-history .status") || (() => {
+    const node = document.createElement("div");
+    node.className = "status";
+    historyListEl.parentElement.insertBefore(node, historyListEl);
+    return node;
+  })();
+  el.textContent = msg;
+  el.classList.add("show", "err");
+  setTimeout(() => { el.classList.remove("show", "err"); el.textContent = ""; }, 4000);
+}
 
 async function loadAndRenderDetail(id) {
   const detailEl = document.getElementById("hd-" + id);
@@ -4318,6 +4982,8 @@ async function loadAndRenderDetail(id) {
   // that the DOM has been replaced.
   if (historyState.section === "cards" && full.id) {
     loadHeroPhoto(full.id);
+    // Populate the Conversations subsection in the same expanded card.
+    loadCardConversations(full.id);
   }
 }
 
@@ -4329,7 +4995,8 @@ function renderCardDetailInline(c) {
 }
 
 function renderConversationDetailInline(c) {
-  // For conversations, prefix with the linked customer card if any.
+  // For conversations, prefix with the linked customer card (if any) and a
+  // small action row that lets the rep change/unlink the contact at any time.
   let prefix = "";
   if (c.card_id) {
     const card = (historyState.cards || []).find(x => x.id === c.card_id);
@@ -4344,7 +5011,29 @@ function renderConversationDetailInline(c) {
       setTimeout(() => loadHeroPhoto(card.id), 0);
     }
   }
-  return prefix + renderConversationSummaryHtml(c);
+  return prefix + renderConvLinkActions(c) + renderConversationSummaryHtml(c);
+}
+
+/** Inline link/change-contact action for an expanded conversation row.
+ *  Linked → small "Change contact" button. Unlinked → prominent CTA so it's
+ *  obvious the conversation is orphaned and easy to attach a profile. */
+function renderConvLinkActions(c) {
+  if (c.card_id) {
+    return `<div class="conv-link-actions">
+      <button type="button" class="secondary conv-link-btn"
+              data-conv-id="${escapeHtml(c.id)}"
+              data-card-id="${escapeHtml(c.card_id)}">
+        Change contact
+      </button>
+    </div>`;
+  }
+  return `<div class="conv-link-prompt">
+    <span class="conv-link-prompt-text">Not linked to a contact yet.</span>
+    <button type="button" class="conv-link-btn"
+            data-conv-id="${escapeHtml(c.id)}">
+      Link to a contact
+    </button>
+  </div>`;
 }
 
 usersTbody.addEventListener("click", async (e) => {

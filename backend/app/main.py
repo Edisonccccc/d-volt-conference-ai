@@ -216,6 +216,53 @@ def get_photo(card_id: str, user: User = Depends(current_user)):
     return FileResponse(path=str(p))
 
 
+@app.get("/cards/{card_id}/conversations")
+def list_card_conversations(
+    card_id: str, user: User = Depends(current_user),
+) -> list[dict]:
+    """Return every conversation linked to this card, newest first.
+
+    Used by the card-detail "Conversations" section so the card profile
+    serves as the customer-centric hub: one customer → many conversations.
+    Reps see only their own; managers see the full team's.
+    """
+    # Auth-scope the parent card so reps can't enumerate someone else's
+    # contact's conversations.
+    if storage.get_card(card_id, user_id=_scope_for(user)) is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    out: list[dict] = []
+    # Pull conversations belonging to the same scope; filter to this card_id.
+    for r in storage.list_conversations(limit=200, user_id=_scope_for(user)):
+        if r.card_id != card_id:
+            continue
+        # First-sentence excerpt from the summary, if available — gives the
+        # card section a useful preview without re-fetching the full record.
+        excerpt = None
+        if r.summary and r.summary.summary:
+            text = r.summary.summary.strip()
+            # Cheap "first sentence": cut on . / ! / ? or 140 chars.
+            for sep in (". ", "! ", "? "):
+                if sep in text:
+                    text = text.split(sep, 1)[0] + sep.rstrip(" ")
+                    break
+            excerpt = text[:200]
+        row = {
+            "id": r.id,
+            "started_at": r.started_at,
+            "ended_at":   r.ended_at,
+            "status":     r.status,
+            "has_audio":  bool(r.audio_path),
+            "excerpt":    excerpt,
+        }
+        if user.role == "manager":
+            row["cost_usd"] = r.cost_usd
+        out.append(row)
+    # Sort newest-first by started_at.
+    out.sort(key=lambda x: x.get("started_at") or "", reverse=True)
+    return out
+
+
 @app.post("/cards/{card_id}/email")
 def email_report(
     card_id: str, payload: dict, user: User = Depends(current_user)
