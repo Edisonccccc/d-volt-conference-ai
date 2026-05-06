@@ -733,6 +733,47 @@ def get_note_counts(user: User = Depends(current_user)) -> dict:
     return storage.count_notes_by_card(user_id=_scope_for(user))
 
 
+@app.get("/notes")
+def list_my_notes(
+    limit: int = 25, user: User = Depends(current_user),
+) -> list[dict]:
+    """Recent notes for the calling rep (or all notes if manager).
+
+    Each row is enriched with the linked customer's name + company (when
+    available) so the Notes tab feed can show context without a per-row
+    /cards/{id} fetch.
+    """
+    notes = storage.list_notes(limit=limit, user_id=_scope_for(user))
+    out: list[dict] = []
+    # Cache card lookups within this request to avoid duplicate fetches when
+    # a rep has many notes for the same customer.
+    card_cache: dict[str, dict] = {}
+    for n in notes:
+        info = card_cache.get(n.card_id)
+        if info is None and n.card_id:
+            card = storage.get_card(n.card_id)  # unscoped on purpose: notes
+            if card is not None:                # already passed auth via list_notes
+                info = {
+                    "name":    card.extracted.name    if card.extracted else None,
+                    "company": card.extracted.company if card.extracted else None,
+                }
+            else:
+                info = {"name": None, "company": None}
+            card_cache[n.card_id] = info
+        info = info or {"name": None, "company": None}
+        out.append({
+            "id":              n.id,
+            "card_id":         n.card_id,
+            "user_id":         n.user_id,
+            "body":            n.body,
+            "created_at":      n.created_at,
+            "updated_at":      n.updated_at,
+            "customer_name":   info.get("name"),
+            "customer_company": info.get("company"),
+        })
+    return out
+
+
 @app.get("/cards/{card_id}/notes", response_model=list[Note])
 def list_card_notes(
     card_id: str, user: User = Depends(current_user),

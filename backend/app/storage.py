@@ -896,6 +896,29 @@ def list_notes_for_card(
     return [_row_to_note(r) for r in rows]
 
 
+def list_notes(
+    limit: int = 50, user_id: Optional[str] = None,
+) -> List["Note"]:
+    """Return recent notes (newest first), optionally scoped to one user.
+
+    Used by the Notes tab to render a feed of "what the rep has been
+    jotting down lately" across all customers.
+    """
+    with _lock, _connect() as conn:
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT * FROM notes ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM notes WHERE user_id = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+    return [_row_to_note(r) for r in rows]
+
+
 def count_notes_by_card(user_id: Optional[str] = None) -> dict:
     """Return a dict {card_id: count} for one query — used by the Library
     list to show "N notes" per customer without N+1 fetches."""

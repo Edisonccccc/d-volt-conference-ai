@@ -952,6 +952,49 @@
   .orphan-help { color: var(--muted); font-weight: 400; font-size: 12px; }
   .orphan-list { margin-top: 10px; }
 
+  /* ----- Notes top-level tab ----------------------------------------- */
+  .recent-notes-title {
+    margin: 24px 0 10px;
+    font-size: 14px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .recent-note-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    margin: 0 0 8px;
+    cursor: pointer;
+    color: var(--ink);
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .recent-note-row:hover {
+    border-color: var(--accent);
+    background: var(--surface-2);
+  }
+  .rnr-meta {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .rnr-body {
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+    /* Three-line clamp keeps the feed compact. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-wrap;
+  }
+
   /* ----- Library: Notes subtab --------------------------------------- */
   .card-notes-host { /* lazy-load target */ }
   .card-notes-section {
@@ -2546,7 +2589,7 @@
         <line x1="13.5" y1="13" x2="18.5" y2="13"/>
         <line x1="13.5" y1="16" x2="17.5" y2="16"/>
       </svg>
-      <span>Card analysis</span>
+      <span>Card</span>
     </button>
     <button class="tab" id="tab-conv-btn" role="tab" aria-selected="false" data-tab="conversation">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2555,6 +2598,17 @@
       </svg>
       <span>Conversation</span>
       <span class="live-dot" aria-hidden="true"></span>
+    </button>
+    <button class="tab" id="tab-notes-btn" role="tab" aria-selected="false" data-tab="notes">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- Sticky note with a folded corner + a couple of text lines -->
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="9"  y1="13" x2="15" y2="13"/>
+        <line x1="9"  y1="17" x2="13" y2="17"/>
+      </svg>
+      <span>Notes</span>
     </button>
     <button class="tab" id="tab-history-btn" role="tab" aria-selected="false" data-tab="history">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2782,6 +2836,46 @@
     <div id="summary"></div>
   </section>
   </div><!-- /#tab-conversation -->
+
+  <div class="tab-content" id="tab-notes" role="tabpanel" aria-labelledby="tab-notes-btn" hidden>
+  <section class="panel">
+    <h2><span class="step">N</span>Notes<span class="chip" id="notesCountChip">0</span></h2>
+    <p class="library-tagline">Quick context about a contact: preferences, things to remember, anything that doesn't fit a conversation.</p>
+
+    <div class="row">
+      <label class="grow" style="display:flex; align-items:center; gap:8px;">
+        <span style="color:var(--muted); font-size:13px; white-space:nowrap;">About</span>
+        <select id="noteCardSelect">
+          <option value="">— Pick a contact —</option>
+        </select>
+      </label>
+    </div>
+
+    <textarea id="noteInput" class="conv-text-input" rows="6"
+      placeholder="What should you remember about this person? Preferences, background, anything you want to capture quickly…"
+      disabled></textarea>
+
+    <div class="row" style="margin-top: 10px; align-items:center;">
+      <span class="conv-text-hint" id="noteInputHint">Pick a contact above to start writing</span>
+      <div class="grow"></div>
+      <button id="saveNoteBtn" class="btn-lg" disabled>
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        <span>Save note</span>
+      </button>
+    </div>
+
+    <div class="status" id="noteStatus"></div>
+
+    <h3 class="recent-notes-title">Recent notes</h3>
+    <div id="recentNotesList" class="history-list">
+      <div class="history-empty">Loading…</div>
+    </div>
+  </section>
+  </div><!-- /#tab-notes -->
 
   <div class="tab-content" id="tab-history" role="tabpanel" aria-labelledby="tab-history-btn" hidden>
   <section class="panel">
@@ -3267,12 +3361,14 @@ applyAuthMode();
 const TAB_BTNS = {
   card:         document.getElementById("tab-card-btn"),
   conversation: document.getElementById("tab-conv-btn"),
+  notes:        document.getElementById("tab-notes-btn"),
   history:      document.getElementById("tab-history-btn"),
   admin:        document.getElementById("tab-admin-btn"),
 };
 const TAB_PANES = {
   card:         document.getElementById("tab-card"),
   conversation: document.getElementById("tab-conversation"),
+  notes:        document.getElementById("tab-notes"),
   history:      document.getElementById("tab-history"),
   admin:        document.getElementById("tab-admin"),
 };
@@ -3292,6 +3388,7 @@ function setActiveTab(name, { fromHashChange = false } = {}) {
   }
   if (name === "admin") loadAdminStats();
   if (name === "history") loadHistory();
+  if (name === "notes") loadNotesTab();
   // Keep top of new view in view; iOS Safari can leave you mid-scroll otherwise.
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -5273,6 +5370,149 @@ historySearchEl.addEventListener("input", () => {
 /** Bulk note counts keyed by card_id. Refreshed alongside cards on every
  *  loadHistory() call so the customer rows can render "N notes" inline. */
 let cardNoteCounts = {};
+
+// =========================================================================
+// Notes tab (top-level)  — quick "jot something about a contact" workflow
+// =========================================================================
+
+const noteCardSelect    = document.getElementById("noteCardSelect");
+const noteInput         = document.getElementById("noteInput");
+const noteInputHint     = document.getElementById("noteInputHint");
+const saveNoteBtn       = document.getElementById("saveNoteBtn");
+const noteStatus        = document.getElementById("noteStatus");
+const recentNotesListEl = document.getElementById("recentNotesList");
+const notesCountChip    = document.getElementById("notesCountChip");
+
+const NOTE_TAB_MIN_CHARS = 1;
+
+function setNoteStatus(msg, isErr = false) {
+  if (!noteStatus) return;
+  noteStatus.textContent = msg || "";
+  noteStatus.classList.toggle("show", !!msg);
+  noteStatus.classList.toggle("err",  !!(msg && isErr));
+}
+
+/** Refresh the contact dropdown using the cards we already have cached. */
+async function refreshNoteCardSelect() {
+  if (!noteCardSelect) return;
+  let cards = historyState.cards;
+  if (!cards) {
+    try {
+      const r = await authFetch("/cards?limit=200");
+      cards = r.ok ? await r.json() : [];
+      historyState.cards = cards;
+    } catch { cards = []; }
+  }
+  // Filter to ready cards (you can't usefully attach a note to a half-processed scan).
+  const ready = (cards || []).filter(c => c.status === "ready");
+  const previous = noteCardSelect.value;
+  noteCardSelect.innerHTML = `<option value="">— Pick a contact —</option>` +
+    ready.map(c => {
+      const label = `${c.name || "(unknown)"} · ${c.company || "—"}`;
+      return `<option value="${escapeHtml(c.id)}">${escapeHtml(label)}</option>`;
+    }).join("");
+  if (previous && ready.some(c => c.id === previous)) noteCardSelect.value = previous;
+}
+
+function refreshNoteInputState() {
+  const hasContact = !!noteCardSelect.value;
+  const len = (noteInput.value || "").trim().length;
+  noteInput.disabled = !hasContact;
+  saveNoteBtn.disabled = !(hasContact && len >= NOTE_TAB_MIN_CHARS);
+  if (!hasContact) {
+    noteInputHint.textContent = "Pick a contact above to start writing";
+  } else if (len === 0) {
+    noteInputHint.textContent = "Write something to save…";
+  } else {
+    noteInputHint.textContent = `${len} character${len === 1 ? "" : "s"}`;
+  }
+}
+
+async function saveNoteFromTab() {
+  const cardId = noteCardSelect.value;
+  const body   = (noteInput.value || "").trim();
+  if (!cardId || !body) return;
+  saveNoteBtn.disabled = true;
+  saveNoteBtn.querySelector("span").textContent = "Saving…";
+  setNoteStatus("");
+  try {
+    const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/notes`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ body }),
+    });
+    if (!r.ok) throw new Error("Save failed: " + r.status);
+    const note = await r.json();
+    // Invalidate caches that other views read from so they pick up the new note.
+    delete notesCache[cardId];
+    cardNoteCounts[cardId] = (cardNoteCounts[cardId] || 0) + 1;
+
+    noteInput.value = "";
+    refreshNoteInputState();
+    setNoteStatus("Saved.", false);
+    setTimeout(() => setNoteStatus(""), 2500);
+    await loadRecentNotes();
+  } catch (err) {
+    setNoteStatus(err.message || String(err), true);
+  } finally {
+    saveNoteBtn.querySelector("span").textContent = "Save note";
+    refreshNoteInputState();
+  }
+}
+
+/** Recent-notes feed — last ~25 across all the user's customers. */
+async function loadRecentNotes() {
+  if (!recentNotesListEl) return;
+  recentNotesListEl.innerHTML = `<div class="history-empty">Loading…</div>`;
+  try {
+    const r = await authFetch("/notes?limit=25");
+    if (!r.ok) throw new Error("status " + r.status);
+    const notes = await r.json();
+    notesCountChip.textContent = notes.length;
+    if (notes.length === 0) {
+      recentNotesListEl.innerHTML = `<div class="history-empty">No notes yet — pick a contact above and write your first.</div>`;
+      return;
+    }
+    recentNotesListEl.innerHTML = notes.map(renderRecentNoteRow).join("");
+  } catch (err) {
+    recentNotesListEl.innerHTML = `<div class="history-empty err">Could not load notes: ${escapeHtml(err.message || err)}</div>`;
+  }
+}
+
+function renderRecentNoteRow(n) {
+  const when = n.created_at ? fmtRelative(n.created_at) : "";
+  const customer = `${n.customer_name || "(unknown contact)"}${n.customer_company ? " · " + n.customer_company : ""}`;
+  return `
+    <button type="button" class="recent-note-row" data-card-id="${escapeHtml(n.card_id)}">
+      <div class="rnr-meta">${escapeHtml(customer)} · ${escapeHtml(when)}</div>
+      <div class="rnr-body">${escapeHtml(n.body)}</div>
+    </button>`;
+}
+
+async function loadNotesTab() {
+  await refreshNoteCardSelect();
+  refreshNoteInputState();
+  await loadRecentNotes();
+}
+
+if (noteCardSelect) noteCardSelect.addEventListener("change", refreshNoteInputState);
+if (noteInput)      noteInput.addEventListener("input",       refreshNoteInputState);
+if (saveNoteBtn)    saveNoteBtn.addEventListener("click",     saveNoteFromTab);
+
+// Click a recent-note row → jump to Library, expand the customer with the
+// Notes subtab open. Reuses the same routing helper conversations use.
+if (recentNotesListEl) {
+  recentNotesListEl.addEventListener("click", (e) => {
+    const row = e.target.closest(".recent-note-row");
+    if (!row) return;
+    const cardId = row.dataset.cardId;
+    if (!cardId) return;
+    setActiveTab("history");
+    historyState.expandedId = cardId;
+    historyState.subtab = "notes";
+    renderHistoryList();
+  });
+}
 
 async function loadHistory() {
   // Fan out three parallel calls so first paint comes back fast even on
