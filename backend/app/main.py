@@ -471,6 +471,58 @@ def get_conversation_endpoint(
     return payload
 
 
+@app.patch("/conversations/{conv_id}")
+def update_conversation_endpoint(
+    conv_id: str, payload: dict, user: User = Depends(current_user),
+) -> dict:
+    """Late-bind a card to a conversation (record-then-scan flow).
+
+    Body: ``{"card_id": "..." | null}``.
+
+    Reps can update conversations they own; managers can update any. The
+    target card must also belong to the rep (validated when not a manager).
+    If the conversation has already finished (status='ready'), we re-render
+    its PDF inline so the brief reflects the new contact. In-flight
+    conversations don't need a re-render — the pipeline picks up the new
+    card_id when it eventually renders.
+    """
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if "card_id" not in payload:
+        return rec.model_dump()  # nothing to change
+
+    card_id = payload.get("card_id")
+    if card_id is not None:
+        if not isinstance(card_id, str) or not card_id:
+            raise HTTPException(
+                status_code=400, detail="card_id must be a non-empty string or null",
+            )
+        # Validate ownership of the target card (managers bypass _scope_for).
+        if storage.get_card(card_id, user_id=_scope_for(user)) is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+
+    # Apply the update with the same ownership scope as the read.
+    storage.update_conversation_card_id(
+        conv_id, card_id, user_id=_scope_for(user),
+    )
+
+    # If the brief PDF was already produced, regenerate it so the linked
+    # card actually shows up in the report. Cheap (no LLM call).
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
+    if rec is not None and rec.status == "ready":
+        try:
+            card = storage.get_card(card_id) if card_id else None
+            out = storage.report_dir() / f"conv-{conv_id}.pdf"
+            render_conversation_report(rec, card, out)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("conv %s PDF re-render after link failed: %s", conv_id, exc)
+            # Don't fail the link — the row was updated, PDF is just stale.
+
+    return rec.model_dump() if rec else {}
+
+
 @app.get("/conversations/{conv_id}/report.pdf")
 def conversation_report_pdf(conv_id: str, user: User = Depends(current_user)):
     rec = storage.get_conversation(conv_id, user_id=_scope_for(user))

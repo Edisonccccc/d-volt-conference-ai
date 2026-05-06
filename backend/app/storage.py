@@ -498,6 +498,30 @@ def update_conversation_transcript(conv_id: str, transcript: str) -> None:
         conn.commit()
 
 
+def update_conversation_card_id(
+    conv_id: str, card_id: Optional[str], *, user_id: Optional[str] = None,
+) -> bool:
+    """Set or clear conversation.card_id (late-binding for record-then-scan).
+
+    If user_id is given, only updates if the conversation belongs to that
+    user — used to scope reps to their own rows. Returns True iff a row
+    was actually updated.
+    """
+    with _lock, _connect() as conn:
+        if user_id is None:
+            cur = conn.execute(
+                "UPDATE conversations SET card_id = ? WHERE id = ?",
+                (card_id, conv_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE conversations SET card_id = ? WHERE id = ? AND user_id = ?",
+                (card_id, conv_id, user_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def update_conversation_summary(conv_id: str, summary: ConversationSummary) -> None:
     with _lock, _connect() as conn:
         conn.execute(

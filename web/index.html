@@ -657,6 +657,53 @@
   .modal-sheet .dup-company { color: var(--muted);  font-size: 13px; margin-top: 2px; }
   .modal-sheet .dup-when    { color: var(--muted);  font-size: 12px; margin-top: 6px; }
 
+  /* ----- Card → Conversation link banner ----------------------------- */
+  /* Shown above the card result when there's an active recording the user
+     can attach this contact to. Subtle accent border so it draws the eye
+     without screaming. */
+  .link-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0 16px;
+    padding: 12px 14px;
+    background: var(--summarizing-soft);
+    border: 1px solid var(--summarizing);
+    border-radius: var(--radius-card);
+    color: var(--ink);
+    animation: fade-in 200ms ease-out;
+  }
+  .link-banner[hidden] { display: none; }
+  .link-banner .link-banner-icon {
+    display: inline-flex;
+    width: 22px; height: 22px;
+    flex: 0 0 22px;
+    color: var(--summarizing);
+  }
+  .link-banner .link-banner-icon svg { width: 100%; height: 100%; }
+  .link-banner .link-banner-text {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .link-banner .link-banner-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .link-banner .link-banner-actions button {
+    margin-top: 0;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  /* Stack on narrow screens so the banner stays readable on phones. */
+  @media (max-width: 480px) {
+    .link-banner { flex-wrap: wrap; }
+    .link-banner .link-banner-text { flex-basis: 100%; order: 2; }
+    .link-banner .link-banner-icon  { order: 1; }
+    .link-banner .link-banner-actions { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  }
+
   /* ----- admin (users) table ---------------------------------------- */
   .users-table {
     width: 100%;
@@ -1981,6 +2028,24 @@
       </li>
     </ol>
 
+    <!-- Late-binding link banner: shown when a card analysis just completed
+         and there's an active conversation that isn't yet linked to it.
+         The "record-first, scan-during" journey. -->
+    <div id="cardLinkBanner" class="link-banner" hidden role="status" aria-live="polite">
+      <span class="link-banner-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.71"/>
+        </svg>
+      </span>
+      <span class="link-banner-text"></span>
+      <div class="link-banner-actions">
+        <button type="button" class="secondary" id="linkDismissBtn">Not now</button>
+        <button type="button" id="linkConvBtn">Link</button>
+      </div>
+    </div>
+
     <div id="result"></div>
   </section>
   </div><!-- /.card-grid -->
@@ -2602,9 +2667,121 @@ function setChipState(el, state) {
   el.dataset.state = state || "";
 }
 
+// ---- Link banner (card → active conversation) ---------------------------
+
+/** Format a duration like "(03:45)" for the banner. Uses liveConv.startedAt. */
+function formatLiveConvDuration() {
+  if (!liveConv || !liveConv.startedAt) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - liveConv.startedAt) / 1000));
+  const mm = Math.floor(secs / 60);
+  const ss = String(secs % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
+/** Decide whether to show the link banner and update its text. Cheap to call
+ *  on every state transition (status update, card ready, banner tick). */
+function refreshLinkBanner() {
+  const banner = document.getElementById("cardLinkBanner");
+  if (!banner) return;
+
+  const card = lastCardData;
+  const showableConvStatuses = ["recording", "uploading", "transcribing", "summarizing"];
+  const shouldShow =
+    !!card &&
+    !!card.id &&
+    card.status === "ready" &&
+    !!card.extracted &&
+    !!liveConv &&
+    showableConvStatuses.includes(liveConv.status) &&
+    liveConv.cardId !== card.id;       // don't nag if already linked
+
+  if (!shouldShow) {
+    banner.hidden = true;
+    if (bannerTickerInterval) {
+      clearInterval(bannerTickerInterval);
+      bannerTickerInterval = null;
+    }
+    return;
+  }
+
+  // Build the prompt text. "Recording" while still recording, "Processing"
+  // once we've moved into upload/transcribe/summarize.
+  const verb = (liveConv.status === "recording") ? "Recording" : "Conversation";
+  const dur  = formatLiveConvDuration();
+  const name = card.extracted.name || "this contact";
+  const co   = card.extracted.company ? ` @ ${card.extracted.company}` : "";
+  banner.querySelector(".link-banner-text").textContent =
+    `${verb} in progress (${dur}) — link to ${name}${co}?`;
+  banner.hidden = false;
+
+  if (!bannerTickerInterval) {
+    bannerTickerInterval = setInterval(() => {
+      // Re-call the full refresh so we also catch state changes (link/dismiss
+      // can happen mid-tick).
+      refreshLinkBanner();
+    }, 1000);
+  }
+}
+
+/** Send PATCH /conversations/{id} with the current card. Called from the
+ *  banner's Link button. */
+async function linkLiveConvToCard() {
+  if (!liveConv || !lastCardData) return;
+  const linkBtn = document.getElementById("linkConvBtn");
+  const dismissBtn = document.getElementById("linkDismissBtn");
+  const origLabel = linkBtn.textContent;
+  linkBtn.disabled = true; dismissBtn.disabled = true;
+  linkBtn.textContent = "Linking…";
+  try {
+    const r = await authFetch(`/conversations/${liveConv.id}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ card_id: lastCardData.id }),
+    });
+    if (!r.ok) throw new Error("link failed: " + r.status);
+    liveConv.cardId = lastCardData.id;
+    refreshLinkBanner();   // banner hides because liveConv.cardId now matches
+    setStatus(`Linked to ${lastCardData.extracted?.name || "contact"}.`, false);
+  } catch (err) {
+    setStatus(err.message || String(err), true);
+    linkBtn.disabled = false; dismissBtn.disabled = false;
+    linkBtn.textContent = origLabel;
+  }
+}
+
+// Wire the banner buttons once on load. Use defer-safe DOMContentLoaded only
+// if needed; we're at the bottom of <body> so the elements exist.
+(function wireLinkBanner() {
+  const linkBtn = document.getElementById("linkConvBtn");
+  const dismissBtn = document.getElementById("linkDismissBtn");
+  if (linkBtn) linkBtn.addEventListener("click", linkLiveConvToCard);
+  if (dismissBtn) dismissBtn.addEventListener("click", () => {
+    // Snooze for this card analysis only — re-shows on the next "ready".
+    document.getElementById("cardLinkBanner").hidden = true;
+    if (bannerTickerInterval) {
+      clearInterval(bannerTickerInterval);
+      bannerTickerInterval = null;
+    }
+  });
+})();
+
 let chosenFile = null;
 let stageStart = {};       // monotonic ms per stage key, for elapsed timers
 let elapsedTimer = null;   // setInterval handle
+
+// ---- Late-binding card↔conversation link state ---------------------------
+// liveConv: the rep's currently active conversation (record-then-scan
+// journey). null when no recording is in flight. Set on /conversations POST,
+// updated on poll, cleared when status hits ready/error.
+//
+// lastCardData: the most recent card payload from pollUntilReady, kept so the
+// banner has the contact's name + id available outside the polling closure.
+//
+// bannerTickerInterval: 1s ticker that updates the banner duration text while
+// the banner is visible. Cleared the moment the banner is hidden.
+let liveConv = null;
+let lastCardData = null;
+let bannerTickerInterval = null;
 
 // ---- helpers --------------------------------------------------------------
 
@@ -2844,6 +3021,9 @@ function resetUploadState({ hideResultPanel = false } = {}) {
     setChipState(chip, "pending");
     showProgress(false);
     resultEl.innerHTML = "";
+    // No card on screen → nothing to link; hide the banner if it was up.
+    lastCardData = null;
+    refreshLinkBanner();
   }
 }
 
@@ -2875,6 +3055,9 @@ submitBtn.addEventListener("click", async () => {
   resetStages();
   setStage("upload", "active");
   renderSkeleton();
+  // Clear stale link-banner state — we'll re-evaluate when this analysis lands.
+  lastCardData = null;
+  refreshLinkBanner();
 
   try {
     // Downscale before upload — Anthropic vision is priced per image token
@@ -2922,6 +3105,10 @@ async function pollUntilReady(id) {
       showProgress(false);
       setBtnLoading(false, "Analyze another");
       setStatus("");
+      // Stash for the link banner; refresh in case there's a live conversation
+      // the rep can attach this contact to (record-then-scan journey).
+      lastCardData = data;
+      refreshLinkBanner();
       return;
     }
     if (data.status === "duplicate") {
@@ -2964,6 +3151,10 @@ async function pollUntilReady(id) {
             applyStatusToStages(prior.status || "ready", !!prior.extracted,
                                 !!prior.research, !!prior.pdf_url);
             renderPartial(prior);
+            // Make the prior card available to the link banner so the rep
+            // can still attach an active conversation to this existing contact.
+            lastCardData = prior;
+            refreshLinkBanner();
           }
         } catch (_) { /* keep the duplicate's partial render as fallback */ }
       }
@@ -3561,6 +3752,15 @@ startBtn.addEventListener("click", async () => {
     if (!res.ok) throw new Error("Could not start conversation: " + res.status);
     const body = await res.json();
     convId = body.id;
+    // Track this as the active conversation for the late-binding link banner.
+    // Status starts at "recording" — pollConversation will keep it in sync.
+    liveConv = {
+      id: body.id,
+      startedAt: Date.now(),
+      status: "recording",
+      cardId: cardId || null,
+    };
+    refreshLinkBanner();
   } catch (err) {
     setConvStatus(err.message || String(err), true);
     return;
@@ -3644,6 +3844,14 @@ async function pollConversation(id) {
     setChipState(convChip, data.status);
     applyConvStatusToStages(data.status);
 
+    // Keep liveConv in sync with the server view so the link banner reflects
+    // the current status (recording/uploading/transcribing/summarizing/ready).
+    if (liveConv && liveConv.id === id) {
+      liveConv.status = data.status;
+      liveConv.cardId = data.card_id || liveConv.cardId || null;
+      refreshLinkBanner();
+    }
+
     if (data.transcript && !renderedTranscript) {
       transcriptEl.innerHTML = escapeHtml(data.transcript);
       transcriptEl.scrollTop = transcriptEl.scrollHeight;
@@ -3663,12 +3871,15 @@ async function pollConversation(id) {
         transcriptEl.innerHTML = escapeHtml(data.transcript);
       }
       renderSummary(data);   // replaces the skeleton with real content
+      // Conversation finalized — Journey A's banner window has closed.
+      if (liveConv && liveConv.id === id) { liveConv = null; refreshLinkBanner(); }
       return;
     }
     if (data.status === "error") {
       setConvStatus(data.error || "Pipeline failed.", true);
       showConvProgress(false);
       summaryEl.innerHTML = "";
+      if (liveConv && liveConv.id === id) { liveConv = null; refreshLinkBanner(); }
       return;
     }
   }
