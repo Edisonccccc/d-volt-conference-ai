@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -793,8 +793,8 @@ def list_card_notes(
 def create_card_note(
     card_id: str, payload: NoteCreate, user: User = Depends(current_user),
 ) -> Note:
-    """Add a note to a customer card. Parent card must belong to this rep
-    (or any card if the caller is a manager)."""
+    """Convenience: create a note already attached to a card. The body's
+    own card_id (if present) is ignored in favor of the URL path."""
     if storage.get_card(card_id, user_id=_scope_for(user)) is None:
         raise HTTPException(status_code=404, detail="Card not found")
     body = (payload.body or "").strip()
@@ -803,18 +803,67 @@ def create_card_note(
     return storage.create_note(card_id, body, user_id=user.id)
 
 
-@app.patch("/notes/{note_id}", response_model=Note)
-def update_note_endpoint(
-    note_id: str, payload: NoteUpdate, user: User = Depends(current_user),
+@app.post("/notes", response_model=Note, status_code=201)
+def create_note_endpoint(
+    payload: NoteCreate, user: User = Depends(current_user),
 ) -> Note:
-    """Edit a note's body. Reps can edit their own; managers can edit any."""
-    existing = storage.get_note(note_id, user_id=_scope_for(user))
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Note not found")
+    """Create a note, optionally attached to a card.
+
+    Body: ``{"body": "...", "card_id": "..." | null}``. Orphan notes
+    (no card_id) show up in the Library's Unlinked dock so the rep can
+    attach them to a contact later.
+    """
     body = (payload.body or "").strip()
     if not body:
         raise HTTPException(status_code=400, detail="body cannot be empty")
-    storage.update_note(note_id, body, user_id=_scope_for(user))
+    if payload.card_id:
+        if storage.get_card(payload.card_id, user_id=_scope_for(user)) is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+    return storage.create_note(payload.card_id or None, body, user_id=user.id)
+
+
+@app.patch("/notes/{note_id}", response_model=Note)
+async def update_note_endpoint(
+    note_id: str, request: Request, user: User = Depends(current_user),
+) -> Note:
+    """Edit a note. Body fields are individually optional:
+
+    - ``{"body": "..."}`` — change the text
+    - ``{"card_id": "..." | null}`` — link / re-link / unlink the contact
+    - both at once
+
+    Whether ``card_id`` was *present* in the request body (vs absent)
+    is what we use to distinguish "don't touch" from "unlink". Reps can
+    edit their own notes; managers can edit any.
+    """
+    existing = storage.get_note(note_id, user_id=_scope_for(user))
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Body must be JSON object")
+
+    if "body" in payload:
+        body = (payload.get("body") or "").strip()
+        if not body:
+            raise HTTPException(status_code=400, detail="body cannot be empty")
+        storage.update_note(note_id, body, user_id=_scope_for(user))
+
+    if "card_id" in payload:
+        new_card_id = payload.get("card_id")
+        if new_card_id is not None:
+            if not isinstance(new_card_id, str) or not new_card_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="card_id must be a non-empty string or null",
+                )
+            if storage.get_card(new_card_id, user_id=_scope_for(user)) is None:
+                raise HTTPException(status_code=404, detail="Card not found")
+        storage.update_note_card_id(
+            note_id, new_card_id, user_id=_scope_for(user),
+        )
+
     return storage.get_note(note_id, user_id=_scope_for(user))
 
 

@@ -951,6 +951,35 @@
   }
   .orphan-help { color: var(--muted); font-weight: 400; font-size: 12px; }
   .orphan-list { margin-top: 10px; }
+  .orphan-note-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .orphan-note-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .orphan-note-actions button {
+    margin-top: 0;
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+  .orphan-note-actions button.danger {
+    background: transparent;
+    color: var(--err);
+    border: 1px solid var(--err);
+  }
+  .orphan-note-actions button.danger:hover { background: var(--err-soft); }
+  .orphan-note-actions .orphan-note-link-btn {
+    background: var(--accent);
+    color: white;
+    border: 1px solid var(--accent);
+  }
 
   /* ----- Notes top-level tab ----------------------------------------- */
   .recent-notes-title {
@@ -993,6 +1022,10 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     white-space: pre-wrap;
+  }
+  .rnr-unlinked {
+    color: var(--err);
+    font-weight: 600;
   }
 
   /* ----- Library: Notes subtab --------------------------------------- */
@@ -2846,17 +2879,16 @@
       <label class="grow" style="display:flex; align-items:center; gap:8px;">
         <span style="color:var(--muted); font-size:13px; white-space:nowrap;">About</span>
         <select id="noteCardSelect">
-          <option value="">— Pick a contact —</option>
+          <option value="">— No contact (link later) —</option>
         </select>
       </label>
     </div>
 
     <textarea id="noteInput" class="conv-text-input" rows="6"
-      placeholder="What should you remember about this person? Preferences, background, anything you want to capture quickly…"
-      disabled></textarea>
+      placeholder="Jot something quickly. Pick a contact above to attach this note, or save it now and link it from the Library later."></textarea>
 
     <div class="row" style="margin-top: 10px; align-items:center;">
-      <span class="conv-text-hint" id="noteInputHint">Pick a contact above to start writing</span>
+      <span class="conv-text-hint" id="noteInputHint">0 characters</span>
       <div class="grow"></div>
       <button id="saveNoteBtn" class="btn-lg" disabled>
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -4435,12 +4467,14 @@ function renderNoteRow(n) {
   const when = n.created_at ? fmtRelative(n.created_at) : "";
   const edited = (n.updated_at && n.updated_at !== n.created_at)
     ? ` · edited ${fmtRelative(n.updated_at)}` : "";
+  const cidAttr = n.card_id ? `data-card-id="${escapeHtml(n.card_id)}"` : "";
   return `<li class="note-item" data-note-id="${escapeHtml(n.id)}">
     <div class="note-meta">${escapeHtml(when)}${escapeHtml(edited)}</div>
     <div class="note-body">${escapeHtml(n.body)}</div>
     <div class="note-row-actions">
-      <button type="button" class="secondary note-edit-btn" data-note-id="${escapeHtml(n.id)}">Edit</button>
-      <button type="button" class="danger note-delete-btn" data-note-id="${escapeHtml(n.id)}" data-card-id="${escapeHtml(n.card_id)}">Delete</button>
+      <button type="button" class="secondary note-relink-btn" data-note-id="${escapeHtml(n.id)}" ${cidAttr}>Move to…</button>
+      <button type="button" class="secondary note-edit-btn"  data-note-id="${escapeHtml(n.id)}">Edit</button>
+      <button type="button" class="danger    note-delete-btn" data-note-id="${escapeHtml(n.id)}" ${cidAttr}>Delete</button>
     </div>
   </li>`;
 }
@@ -4598,6 +4632,21 @@ document.body.addEventListener("click", (e) => {
   if (noteEditBtn) {
     e.preventDefault(); e.stopPropagation();
     enterNoteEdit(noteEditBtn.dataset.noteId);
+    return;
+  }
+  const noteRelinkBtn = e.target.closest(".note-relink-btn");
+  if (noteRelinkBtn) {
+    e.preventDefault(); e.stopPropagation();
+    const noteId = noteRelinkBtn.dataset.noteId;
+    const currentCardId = noteRelinkBtn.dataset.cardId || null;
+    openLinkContactPicker(noteId, currentCardId, {
+      kind: "note",
+      onSuccess: async () => {
+        // Invalidate caches and refresh both sides (per-customer + Library list).
+        for (const cid of Object.keys(notesCache)) delete notesCache[cid];
+        await loadHistory();
+      },
+    });
     return;
   }
   const noteCancelBtn = e.target.closest(".note-edit-cancel-btn");
@@ -5371,6 +5420,10 @@ historySearchEl.addEventListener("input", () => {
  *  loadHistory() call so the customer rows can render "N notes" inline. */
 let cardNoteCounts = {};
 
+/** Recent notes (with customer info joined) — used for the Library's
+ *  Unlinked-notes dock and as the source for renderHistoryList orphans. */
+let recentNotes = [];
+
 // =========================================================================
 // Notes tab (top-level)  — quick "jot something about a contact" workflow
 // =========================================================================
@@ -5403,10 +5456,9 @@ async function refreshNoteCardSelect() {
       historyState.cards = cards;
     } catch { cards = []; }
   }
-  // Filter to ready cards (you can't usefully attach a note to a half-processed scan).
   const ready = (cards || []).filter(c => c.status === "ready");
   const previous = noteCardSelect.value;
-  noteCardSelect.innerHTML = `<option value="">— Pick a contact —</option>` +
+  noteCardSelect.innerHTML = `<option value="">— No contact (link later) —</option>` +
     ready.map(c => {
       const label = `${c.name || "(unknown)"} · ${c.company || "—"}`;
       return `<option value="${escapeHtml(c.id)}">${escapeHtml(label)}</option>`;
@@ -5415,42 +5467,43 @@ async function refreshNoteCardSelect() {
 }
 
 function refreshNoteInputState() {
-  const hasContact = !!noteCardSelect.value;
+  // Notes can be standalone — gate Save on body alone, not on contact.
   const len = (noteInput.value || "").trim().length;
-  noteInput.disabled = !hasContact;
-  saveNoteBtn.disabled = !(hasContact && len >= NOTE_TAB_MIN_CHARS);
-  if (!hasContact) {
-    noteInputHint.textContent = "Pick a contact above to start writing";
-  } else if (len === 0) {
-    noteInputHint.textContent = "Write something to save…";
+  saveNoteBtn.disabled = len < NOTE_TAB_MIN_CHARS;
+  if (len === 0) {
+    noteInputHint.textContent = noteCardSelect.value
+      ? "Write something to save…"
+      : "Write a note now and link a contact later (optional).";
   } else {
     noteInputHint.textContent = `${len} character${len === 1 ? "" : "s"}`;
   }
 }
 
 async function saveNoteFromTab() {
-  const cardId = noteCardSelect.value;
+  const cardId = noteCardSelect.value || null;
   const body   = (noteInput.value || "").trim();
-  if (!cardId || !body) return;
+  if (!body) return;
   saveNoteBtn.disabled = true;
   saveNoteBtn.querySelector("span").textContent = "Saving…";
   setNoteStatus("");
   try {
-    const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/notes`, {
+    const r = await authFetch("/notes", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, card_id: cardId }),
     });
     if (!r.ok) throw new Error("Save failed: " + r.status);
-    const note = await r.json();
+    await r.json();
     // Invalidate caches that other views read from so they pick up the new note.
-    delete notesCache[cardId];
-    cardNoteCounts[cardId] = (cardNoteCounts[cardId] || 0) + 1;
+    if (cardId) {
+      delete notesCache[cardId];
+      cardNoteCounts[cardId] = (cardNoteCounts[cardId] || 0) + 1;
+    }
 
     noteInput.value = "";
     refreshNoteInputState();
-    setNoteStatus("Saved.", false);
-    setTimeout(() => setNoteStatus(""), 2500);
+    setNoteStatus(cardId ? "Saved." : "Saved as unlinked. Attach it from the Library when you're ready.", false);
+    setTimeout(() => setNoteStatus(""), 3500);
     await loadRecentNotes();
   } catch (err) {
     setNoteStatus(err.message || String(err), true);
@@ -5481,10 +5534,14 @@ async function loadRecentNotes() {
 
 function renderRecentNoteRow(n) {
   const when = n.created_at ? fmtRelative(n.created_at) : "";
-  const customer = `${n.customer_name || "(unknown contact)"}${n.customer_company ? " · " + n.customer_company : ""}`;
+  const customer = n.card_id
+    ? `${n.customer_name || "(unknown contact)"}${n.customer_company ? " · " + n.customer_company : ""}`
+    : `<span class="rnr-unlinked">Unlinked</span>`;
   return `
-    <button type="button" class="recent-note-row" data-card-id="${escapeHtml(n.card_id)}">
-      <div class="rnr-meta">${escapeHtml(customer)} · ${escapeHtml(when)}</div>
+    <button type="button" class="recent-note-row"
+            data-card-id="${escapeHtml(n.card_id || "")}"
+            data-note-id="${escapeHtml(n.id)}">
+      <div class="rnr-meta">${customer} · ${escapeHtml(when)}</div>
       <div class="rnr-body">${escapeHtml(n.body)}</div>
     </button>`;
 }
@@ -5499,38 +5556,60 @@ if (noteCardSelect) noteCardSelect.addEventListener("change", refreshNoteInputSt
 if (noteInput)      noteInput.addEventListener("input",       refreshNoteInputState);
 if (saveNoteBtn)    saveNoteBtn.addEventListener("click",     saveNoteFromTab);
 
-// Click a recent-note row → jump to Library, expand the customer with the
-// Notes subtab open. Reuses the same routing helper conversations use.
+// Click a recent-note row → jump to Library:
+//   - linked  : expand the customer with Notes subtab open.
+//   - unlinked: open the Unlinked-notes dock; the rep can re-link inline.
 if (recentNotesListEl) {
-  recentNotesListEl.addEventListener("click", (e) => {
+  recentNotesListEl.addEventListener("click", async (e) => {
     const row = e.target.closest(".recent-note-row");
     if (!row) return;
     const cardId = row.dataset.cardId;
-    if (!cardId) return;
     setActiveTab("history");
-    historyState.expandedId = cardId;
-    historyState.subtab = "notes";
+    if (cardId) {
+      historyState.expandedId = cardId;
+      historyState.subtab = "notes";
+    } else {
+      historyState.unlinkedNotesOpen = true;
+    }
     renderHistoryList();
   });
 }
 
 async function loadHistory() {
-  // Fan out three parallel calls so first paint comes back fast even on
-  // slower networks. Note counts are cheap (one GROUP BY on the server).
+  // Fan out four parallel calls (cards, convs, note counts, recent notes
+  // for the Unlinked dock) so the Library renders in a single round-trip.
   historyListEl.innerHTML = `<div class="history-empty">Loading…</div>`;
   try {
-    const [cardsRes, convRes, noteRes] = await Promise.all([
+    const [cardsRes, convRes, noteCountRes, notesRes] = await Promise.all([
       authFetch("/cards?limit=100"),
       authFetch("/conversations?limit=100"),
       authFetch("/notes/counts"),
+      authFetch("/notes?limit=100"),
     ]);
     historyState.cards         = cardsRes.ok ? await cardsRes.json() : [];
     historyState.conversations = convRes.ok  ? await convRes.json()  : [];
-    cardNoteCounts             = noteRes.ok  ? await noteRes.json()  : {};
+    cardNoteCounts             = noteCountRes.ok ? await noteCountRes.json() : {};
+    recentNotes                = notesRes.ok ? await notesRes.json() : [];
     renderHistoryList();
   } catch (err) {
     historyListEl.innerHTML = `<div class="history-empty err">Could not load library: ${escapeHtml(err.message || err)}</div>`;
   }
+}
+
+/** Each row in the Unlinked-notes dock: shows body excerpt + a Link
+ *  button that opens the picker, plus a Delete. */
+function renderOrphanNoteRow(n) {
+  const when = n.created_at ? fmtRelative(n.created_at) : "";
+  const safeId = escapeHtml(n.id);
+  // Two-line clamp via inline style so we don't need another CSS rule.
+  return `<div class="orphan-note-row" data-note-id="${safeId}">
+    <div class="rnr-meta">${escapeHtml(when)}</div>
+    <div class="rnr-body" style="-webkit-line-clamp:3;">${escapeHtml(n.body || "")}</div>
+    <div class="orphan-note-actions">
+      <button type="button" class="orphan-note-link-btn" data-note-id="${safeId}">Link to a contact</button>
+      <button type="button" class="danger orphan-note-delete-btn" data-note-id="${safeId}">Delete</button>
+    </div>
+  </div>`;
 }
 
 function renderHistoryList() {
@@ -5563,6 +5642,12 @@ function renderHistoryList() {
       .includes(q)
   );
 
+  // Unlinked notes (refreshed alongside cards/conversations in loadHistory).
+  const orphanNotes = (recentNotes || []).filter(n => !n.card_id);
+  const filteredOrphanNotes = !q ? orphanNotes : orphanNotes.filter(n =>
+    (n.body || "").toLowerCase().includes(q)
+  );
+
   // Headline count: how many customers in your library.
   historyCountChip.textContent = filteredCards.length;
 
@@ -5589,7 +5674,7 @@ function renderHistoryList() {
     renderCustomerRow(c, convCountByCard.get(c.id) || 0, cardNoteCounts[c.id] || 0)
   ).join("");
 
-  // Bottom dock for orphans — collapsed accordion. Click to reveal.
+  // Bottom docks for orphans — separate sections for conversations and notes.
   let orphansHtml = "";
   if (filteredOrphans.length > 0) {
     const open = !!historyState.unlinkedOpen;
@@ -5611,7 +5696,28 @@ function renderHistoryList() {
       </div>`;
   }
 
-  historyListEl.innerHTML = totalsHtml + customersHtml + orphansHtml;
+  let orphanNotesHtml = "";
+  if (filteredOrphanNotes.length > 0) {
+    const open = !!historyState.unlinkedNotesOpen;
+    orphanNotesHtml = `
+      <div class="orphan-dock orphan-notes-dock ${open ? "open" : ""}">
+        <button type="button" class="orphan-toggle" id="orphanNotesToggle">
+          <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          Unlinked notes <span class="orphan-count">${filteredOrphanNotes.length}</span>
+          <span class="orphan-help">— attach them to a contact or delete</span>
+        </button>
+        ${open
+          ? `<div class="orphan-list">${
+              filteredOrphanNotes.map(renderOrphanNoteRow).join("")
+            }</div>`
+          : ""}
+      </div>`;
+  }
+
+  historyListEl.innerHTML = totalsHtml + customersHtml + orphansHtml + orphanNotesHtml;
 
   // Async-load the photos for visible customer rows so the avatars fill in.
   for (const c of filteredCards) {
@@ -5888,11 +5994,35 @@ historyListEl.addEventListener("click", (e) => {
     return;
   }
 
-  // Orphan dock toggle
+  // Orphan-conversations dock toggle
   if (e.target.closest("#orphanToggle")) {
     e.stopPropagation();
     historyState.unlinkedOpen = !historyState.unlinkedOpen;
     renderHistoryList();
+    return;
+  }
+
+  // Orphan-notes dock toggle
+  if (e.target.closest("#orphanNotesToggle")) {
+    e.stopPropagation();
+    historyState.unlinkedNotesOpen = !historyState.unlinkedNotesOpen;
+    renderHistoryList();
+    return;
+  }
+
+  // "Link to a contact" on an orphan note row → picker
+  const noteLinkBtn = e.target.closest(".orphan-note-link-btn");
+  if (noteLinkBtn) {
+    e.stopPropagation();
+    openLinkContactPicker(noteLinkBtn.dataset.noteId, null, { kind: "note" });
+    return;
+  }
+
+  // Delete an orphan note
+  const noteDelBtn = e.target.closest(".orphan-note-delete-btn");
+  if (noteDelBtn) {
+    e.stopPropagation();
+    deleteOrphanNote(noteDelBtn.dataset.noteId);
     return;
   }
 
@@ -6113,9 +6243,31 @@ async function deleteConvFromLibrary(convId) {
   }
 }
 
+async function deleteOrphanNote(noteId) {
+  const ok = window.confirm("Delete this unlinked note? This can't be undone.");
+  if (!ok) return;
+  try {
+    const r = await authFetch(`/notes/${encodeURIComponent(noteId)}`, { method: "DELETE" });
+    if (!r.ok) throw new Error("Delete failed: " + r.status);
+    await loadHistory();
+  } catch (err) {
+    setHistoryError(err.message || String(err));
+  }
+}
+
 /** Open a modal that lets the rep search through their cards and pick one
- *  to attach to a conversation (or unlink an existing attachment). */
-async function openLinkContactPicker(convId, currentCardId) {
+ *  to attach to a conversation OR a note (or unlink an existing attachment).
+ *
+ *  Backwards-compatible: legacy callers `openLinkContactPicker(convId, cardId)`
+ *  still work — kind defaults to "conversation". */
+async function openLinkContactPicker(entityId, currentCardId, opts = {}) {
+  const kind     = opts.kind || "conversation";   // "conversation" | "note"
+  const endpoint = kind === "note"
+    ? `/notes/${encodeURIComponent(entityId)}`
+    : `/conversations/${encodeURIComponent(entityId)}`;
+  const onSuccess = opts.onSuccess || (() => loadHistory());
+  // Preserve original parameter names below by aliasing convId → entityId.
+  const convId = entityId;
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML = `
@@ -6151,9 +6303,9 @@ async function openLinkContactPicker(convId, currentCardId) {
     unlinkBtn.addEventListener("click", async () => {
       unlinkBtn.disabled = true; unlinkBtn.textContent = "Unlinking…";
       try {
-        await patchConversationCard(convId, null);
+        await patchEntityCard(endpoint, null);
         close();
-        await loadHistory();
+        await onSuccess();
       } catch (err) {
         unlinkBtn.disabled = false;
         unlinkBtn.textContent = "Unlink";
@@ -6207,9 +6359,9 @@ async function openLinkContactPicker(convId, currentCardId) {
     row.disabled = true;
     row.classList.add("loading");
     try {
-      await patchConversationCard(convId, newCardId);
+      await patchEntityCard(endpoint, newCardId);
       close();
-      await loadHistory();
+      await onSuccess();
     } catch (err) {
       row.disabled = false;
       row.classList.remove("loading");
@@ -6218,10 +6370,10 @@ async function openLinkContactPicker(convId, currentCardId) {
   });
 }
 
-/** PATCH the conversation's card_id; clears the detail-cache entry so the
- *  next expansion re-fetches with the new linkage. */
-async function patchConversationCard(convId, cardId) {
-  const r = await authFetch(`/conversations/${convId}`, {
+/** Generalized PATCH-card-id helper for both conversations and notes.
+ *  `endpoint` is e.g. "/conversations/abc123" or "/notes/xyz". */
+async function patchEntityCard(endpoint, cardId) {
+  const r = await authFetch(endpoint, {
     method: "PATCH",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ card_id: cardId }),
@@ -6230,7 +6382,10 @@ async function patchConversationCard(convId, cardId) {
     const detail = await r.text().catch(() => "");
     throw new Error("Update failed: " + r.status + (detail ? " — " + detail : ""));
   }
-  delete historyState.detailCache[convId];
+  // Best-effort: invalidate the conversation detail cache if the endpoint
+  // happens to be a conversation. Notes have their own cache keyed elsewhere.
+  const m = endpoint.match(/^\/conversations\/(.+)$/);
+  if (m) delete historyState.detailCache[m[1]];
 }
 
 function setHistoryError(msg) {

@@ -231,15 +231,12 @@ class AuthResponse(BaseModel):
 
 
 class Note(BaseModel):
-    """A short freeform piece of context about a customer.
-
-    Distinct from a Conversation: notes are general info you want to
-    remember about a person (preferences, background, internal nudges),
-    not a record of a specific interaction.
-    """
+    """A short freeform piece of context. May be linked to a customer card
+    or stand alone (orphan notes live in the Library's Unlinked dock until
+    the rep attaches them to a contact)."""
 
     id: str
-    card_id: str
+    card_id: Optional[str] = None
     user_id: Optional[str] = None
     body: str
     created_at: str
@@ -248,7 +245,13 @@ class Note(BaseModel):
 
 class NoteCreate(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
+    card_id: Optional[str] = None  # Orphan notes are allowed.
 
 
 class NoteUpdate(BaseModel):
-    body: str = Field(min_length=1, max_length=5000)
+    """All fields optional — caller can update body, card_id, or both."""
+    body: Optional[str] = Field(default=None, max_length=5000)
+    card_id: Optional[str] = None
+    # `card_id` of None could mean "don't touch" OR "unlink". We resolve
+    # the ambiguity in the endpoint: presence of the key in the request
+    # body is what matters, not the value alone.

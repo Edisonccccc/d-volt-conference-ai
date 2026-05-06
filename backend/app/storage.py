@@ -151,14 +151,15 @@ def init_db() -> None:
             """
         )
 
-        # Free-form notes attached to a customer card. Distinct from
-        # `conversations` (which represent discrete interactions) — notes
-        # are general context: preferences, background, things to remember.
+        # Free-form notes. Distinct from `conversations` (discrete
+        # interactions); notes are context — preferences, background,
+        # things to remember. card_id is nullable: a note can be created
+        # standalone and linked to a customer later from the Library.
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS notes (
                 id          TEXT PRIMARY KEY,
-                card_id     TEXT NOT NULL,
+                card_id     TEXT,
                 user_id     TEXT,
                 body        TEXT NOT NULL,
                 created_at  TEXT NOT NULL,
@@ -166,6 +167,28 @@ def init_db() -> None:
             )
             """
         )
+        # One-time migration: earlier versions of this table declared
+        # card_id as NOT NULL. SQLite can't ALTER COLUMN to drop it, so
+        # we rebuild the table when we detect the old schema.
+        notes_schema = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='notes'"
+        ).fetchone()
+        if notes_schema and "card_id TEXT NOT NULL" in (notes_schema["sql"] or ""):
+            conn.execute("ALTER TABLE notes RENAME TO notes_old")
+            conn.execute(
+                """
+                CREATE TABLE notes (
+                    id          TEXT PRIMARY KEY,
+                    card_id     TEXT,
+                    user_id     TEXT,
+                    body        TEXT NOT NULL,
+                    created_at  TEXT NOT NULL,
+                    updated_at  TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute("INSERT INTO notes SELECT * FROM notes_old")
+            conn.execute("DROP TABLE notes_old")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_card ON notes(card_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)")
 
@@ -347,13 +370,18 @@ def delete_card(card_id: str) -> bool:
         if row is None:
             return False
         photo_path = row["photo_path"]
-        # Orphan linked conversations before dropping the parent row.
+        # Orphan linked rows before dropping the parent. Conversations
+        # AND notes both survive — the rep's recorded interactions and
+        # context jottings stay in the Library so they can be re-attached
+        # to a different contact via the picker.
         conn.execute(
             "UPDATE conversations SET card_id = NULL WHERE card_id = ?",
             (card_id,),
         )
-        # Notes are scoped to the customer, so cascade-delete them.
-        conn.execute("DELETE FROM notes WHERE card_id = ?", (card_id,))
+        conn.execute(
+            "UPDATE notes SET card_id = NULL WHERE card_id = ?",
+            (card_id,),
+        )
         conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         # Only unlink the photo if no surviving row references it.
         if photo_path:
@@ -842,8 +870,11 @@ def _row_to_note(row: sqlite3.Row) -> "Note":
     )
 
 
-def create_note(card_id: str, body: str, user_id: Optional[str] = None) -> "Note":
-    """Create a note attached to a card. Returns the Note record."""
+def create_note(
+    card_id: Optional[str], body: str, user_id: Optional[str] = None,
+) -> "Note":
+    """Create a note. ``card_id`` is optional — orphan notes live in the
+    Library's Unlinked dock until the rep links them to a contact."""
     note_id = uuid.uuid4().hex[:12]
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connect() as conn:
@@ -858,6 +889,31 @@ def create_note(card_id: str, body: str, user_id: Optional[str] = None) -> "Note
         id=note_id, card_id=card_id, user_id=user_id, body=body,
         created_at=now, updated_at=now,
     )
+
+
+def update_note_card_id(
+    note_id: str, card_id: Optional[str], *, user_id: Optional[str] = None,
+) -> bool:
+    """Re-link or unlink a note (set card_id = ... | NULL).
+
+    Scoped to user_id when provided. Bumps updated_at so the UI can show
+    "edited Xm ago" if it surfaces that. Returns True iff a row changed.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        if user_id is None:
+            cur = conn.execute(
+                "UPDATE notes SET card_id = ?, updated_at = ? WHERE id = ?",
+                (card_id, now, note_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE notes SET card_id = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?",
+                (card_id, now, note_id, user_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def get_note(note_id: str, user_id: Optional[str] = None) -> Optional["Note"]:
