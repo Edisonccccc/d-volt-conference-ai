@@ -223,3 +223,32 @@ class UserLogin(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: User
+
+
+# ---------------------------------------------------------------------------
+# Notes — free-form context attached to a customer card
+# ---------------------------------------------------------------------------
+
+
+class Note(BaseModel):
+    """A short freeform piece of context about a customer.
+
+    Distinct from a Conversation: notes are general info you want to
+    remember about a person (preferences, background, internal nudges),
+    not a record of a specific interaction.
+    """
+
+    id: str
+    card_id: str
+    user_id: Optional[str] = None
+    body: str
+    created_at: str
+    updated_at: str
+
+
+class NoteCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+
+class NoteUpdate(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)

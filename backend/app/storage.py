@@ -151,6 +151,24 @@ def init_db() -> None:
             """
         )
 
+        # Free-form notes attached to a customer card. Distinct from
+        # `conversations` (which represent discrete interactions) — notes
+        # are general context: preferences, background, things to remember.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notes (
+                id          TEXT PRIMARY KEY,
+                card_id     TEXT NOT NULL,
+                user_id     TEXT,
+                body        TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_card ON notes(card_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
 
@@ -334,6 +352,8 @@ def delete_card(card_id: str) -> bool:
             "UPDATE conversations SET card_id = NULL WHERE card_id = ?",
             (card_id,),
         )
+        # Notes are scoped to the customer, so cascade-delete them.
+        conn.execute("DELETE FROM notes WHERE card_id = ?", (card_id,))
         conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         # Only unlink the photo if no surviving row references it.
         if photo_path:
@@ -801,6 +821,130 @@ def delete_company_profile(company: str) -> bool:
             "DELETE FROM company_profiles WHERE company = ?",
             (company.strip(),),
         )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Notes (free-form per-customer context)
+# ---------------------------------------------------------------------------
+
+
+def _row_to_note(row: sqlite3.Row) -> "Note":
+    from .models import Note  # avoid circular import at module load
+    return Note(
+        id=row["id"],
+        card_id=row["card_id"],
+        user_id=row["user_id"] if "user_id" in row.keys() else None,
+        body=row["body"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def create_note(card_id: str, body: str, user_id: Optional[str] = None) -> "Note":
+    """Create a note attached to a card. Returns the Note record."""
+    note_id = uuid.uuid4().hex[:12]
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO notes (id, card_id, user_id, body, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (note_id, card_id, user_id, body, now, now),
+        )
+        conn.commit()
+    from .models import Note
+    return Note(
+        id=note_id, card_id=card_id, user_id=user_id, body=body,
+        created_at=now, updated_at=now,
+    )
+
+
+def get_note(note_id: str, user_id: Optional[str] = None) -> Optional["Note"]:
+    """Fetch one note, optionally scoped to a user."""
+    with _lock, _connect() as conn:
+        if user_id is None:
+            row = conn.execute(
+                "SELECT * FROM notes WHERE id = ?", (note_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM notes WHERE id = ? AND user_id = ?",
+                (note_id, user_id),
+            ).fetchone()
+    return _row_to_note(row) if row else None
+
+
+def list_notes_for_card(
+    card_id: str, user_id: Optional[str] = None,
+) -> List["Note"]:
+    """Return notes for a card (newest first). If user_id is given, only
+    return notes authored by that user."""
+    with _lock, _connect() as conn:
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT * FROM notes WHERE card_id = ? "
+                "ORDER BY created_at DESC",
+                (card_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM notes WHERE card_id = ? AND user_id = ? "
+                "ORDER BY created_at DESC",
+                (card_id, user_id),
+            ).fetchall()
+    return [_row_to_note(r) for r in rows]
+
+
+def count_notes_by_card(user_id: Optional[str] = None) -> dict:
+    """Return a dict {card_id: count} for one query — used by the Library
+    list to show "N notes" per customer without N+1 fetches."""
+    with _lock, _connect() as conn:
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT card_id, COUNT(*) AS n FROM notes GROUP BY card_id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT card_id, COUNT(*) AS n FROM notes "
+                "WHERE user_id = ? GROUP BY card_id",
+                (user_id,),
+            ).fetchall()
+    return {r["card_id"]: r["n"] for r in rows}
+
+
+def update_note(
+    note_id: str, body: str, user_id: Optional[str] = None,
+) -> bool:
+    """Edit a note's body. Scoped to user_id if provided; returns True
+    iff a row was actually updated."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        if user_id is None:
+            cur = conn.execute(
+                "UPDATE notes SET body = ?, updated_at = ? WHERE id = ?",
+                (body, now, note_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE notes SET body = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?",
+                (body, now, note_id, user_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def delete_note(note_id: str, user_id: Optional[str] = None) -> bool:
+    """Delete one note. Scoped to user_id if provided."""
+    with _lock, _connect() as conn:
+        if user_id is None:
+            cur = conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        else:
+            cur = conn.execute(
+                "DELETE FROM notes WHERE id = ? AND user_id = ?",
+                (note_id, user_id),
+            )
         conn.commit()
         return cur.rowcount > 0
 

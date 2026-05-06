@@ -31,6 +31,9 @@ from .company_profile import get_or_fetch_company_profile
 from .conversation import summarize_conversation
 from .models import (
     AuthResponse,
+    Note,
+    NoteCreate,
+    NoteUpdate,
     User,
     UserCreate,
     UserLogin,
@@ -715,6 +718,74 @@ def list_conversations_endpoint(
             row["cost_usd"] = r.cost_usd
         out.append(row)
     return out
+
+
+# ===========================================================================
+# Notes — free-form per-customer context (separate from conversations)
+# ===========================================================================
+
+
+@app.get("/notes/counts")
+def get_note_counts(user: User = Depends(current_user)) -> dict:
+    """Return ``{card_id: count}`` for the caller's notes (or all notes for
+    a manager). Used by the Library list to show "N notes" per customer
+    without an N+1 fetch."""
+    return storage.count_notes_by_card(user_id=_scope_for(user))
+
+
+@app.get("/cards/{card_id}/notes", response_model=list[Note])
+def list_card_notes(
+    card_id: str, user: User = Depends(current_user),
+) -> list[Note]:
+    """Notes attached to a customer card, newest first.
+
+    Reps see only their own notes; managers see everyone's. The parent
+    card is auth-checked first so reps can't enumerate notes on someone
+    else's contact.
+    """
+    if storage.get_card(card_id, user_id=_scope_for(user)) is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return storage.list_notes_for_card(card_id, user_id=_scope_for(user))
+
+
+@app.post("/cards/{card_id}/notes", response_model=Note, status_code=201)
+def create_card_note(
+    card_id: str, payload: NoteCreate, user: User = Depends(current_user),
+) -> Note:
+    """Add a note to a customer card. Parent card must belong to this rep
+    (or any card if the caller is a manager)."""
+    if storage.get_card(card_id, user_id=_scope_for(user)) is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="body cannot be empty")
+    return storage.create_note(card_id, body, user_id=user.id)
+
+
+@app.patch("/notes/{note_id}", response_model=Note)
+def update_note_endpoint(
+    note_id: str, payload: NoteUpdate, user: User = Depends(current_user),
+) -> Note:
+    """Edit a note's body. Reps can edit their own; managers can edit any."""
+    existing = storage.get_note(note_id, user_id=_scope_for(user))
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="body cannot be empty")
+    storage.update_note(note_id, body, user_id=_scope_for(user))
+    return storage.get_note(note_id, user_id=_scope_for(user))
+
+
+@app.delete("/notes/{note_id}")
+def delete_note_endpoint(
+    note_id: str, user: User = Depends(current_user),
+) -> dict:
+    """Delete a note. Reps can delete their own; managers can delete any."""
+    if storage.get_note(note_id, user_id=_scope_for(user)) is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    storage.delete_note(note_id, user_id=_scope_for(user))
+    return {"ok": True, "id": note_id}
 
 
 # ===========================================================================

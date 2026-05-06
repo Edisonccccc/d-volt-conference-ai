@@ -952,6 +952,128 @@
   .orphan-help { color: var(--muted); font-weight: 400; font-size: 12px; }
   .orphan-list { margin-top: 10px; }
 
+  /* ----- Library: Notes subtab --------------------------------------- */
+  .card-notes-host { /* lazy-load target */ }
+  .card-notes-section {
+    margin-top: 6px;
+  }
+  .note-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    margin-bottom: 14px;
+  }
+  .note-add-form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 60px;
+    box-sizing: border-box;
+  }
+  .note-add-form textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  }
+  .note-add-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .note-add-hint {
+    color: var(--muted);
+    font-size: 12px;
+    flex: 1;
+  }
+  .note-add-actions button {
+    margin-top: 0;
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+
+  .note-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 16px 0;
+    text-align: center;
+  }
+  .note-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .note-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    transition: border-color 120ms ease;
+  }
+  .note-item:hover { border-color: var(--accent-soft, #c4b5fd); }
+  .note-item.editing { border-color: var(--accent); }
+  .note-meta {
+    color: var(--muted);
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+  .note-body {
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .note-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .note-row-actions button {
+    margin-top: 0;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .note-row-actions button.danger {
+    background: transparent;
+    color: var(--err);
+    border: 1px solid var(--err);
+  }
+  .note-row-actions button.danger:hover { background: var(--err-soft); }
+  .note-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .note-edit-form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 60px;
+    box-sizing: border-box;
+  }
+
   /* ----- Library: edit + delete actions on detail panels ------------- */
   .library-actions {
     display: flex;
@@ -4137,6 +4259,177 @@ function renderCardConversationRow(c) {
     </button>`;
 }
 
+// ---- Notes (per-customer free-form context) -----------------------------
+
+/** Cache of notes by card_id so subtab switches are instant after the first
+ *  load. Cleared lazily on add/edit/delete via spliceNotesCache. */
+const notesCache = {};
+
+async function loadCardNotes(cardId, { force = false } = {}) {
+  if (!cardId) return;
+  const host = document.getElementById("card-notes-" + cardId);
+  if (!host) return;
+
+  let notes = notesCache[cardId];
+  if (!notes || force) {
+    host.innerHTML = `<div class="card-notes-section">
+      <div class="card-convs-header">
+        <h3 class="card-convs-title">Notes</h3>
+      </div>
+      <div class="skeleton long"></div>
+    </div>`;
+    try {
+      const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/notes`);
+      if (!r.ok) throw new Error("status " + r.status);
+      notes = await r.json();
+      notesCache[cardId] = notes;
+    } catch (_) {
+      host.innerHTML = "";
+      return;
+    }
+  }
+  renderNotesPane(host, cardId, notes);
+}
+
+function renderNotesPane(host, cardId, notes) {
+  const list = (notes || []).slice().sort((a, b) =>
+    (b.created_at || "").localeCompare(a.created_at || "")
+  );
+  host.innerHTML = `
+    <div class="card-notes-section">
+      <div class="card-convs-header">
+        <h3 class="card-convs-title">
+          Notes${list.length ? ` <span class="card-convs-count">${list.length}</span>` : ""}
+        </h3>
+      </div>
+      <form class="note-add-form" data-card-id="${escapeHtml(cardId)}">
+        <textarea name="body" rows="3"
+          placeholder="Add a note about this contact — preferences, background, anything to remember…"
+          required></textarea>
+        <div class="note-add-actions">
+          <span class="note-add-hint" data-card-id="${escapeHtml(cardId)}">0 characters</span>
+          <button type="submit" disabled>Add note</button>
+        </div>
+      </form>
+      ${list.length === 0
+        ? `<div class="note-empty">No notes yet for this contact.</div>`
+        : `<ul class="note-list">${list.map(renderNoteRow).join("")}</ul>`}
+    </div>`;
+}
+
+function renderNoteRow(n) {
+  const when = n.created_at ? fmtRelative(n.created_at) : "";
+  const edited = (n.updated_at && n.updated_at !== n.created_at)
+    ? ` · edited ${fmtRelative(n.updated_at)}` : "";
+  return `<li class="note-item" data-note-id="${escapeHtml(n.id)}">
+    <div class="note-meta">${escapeHtml(when)}${escapeHtml(edited)}</div>
+    <div class="note-body">${escapeHtml(n.body)}</div>
+    <div class="note-row-actions">
+      <button type="button" class="secondary note-edit-btn" data-note-id="${escapeHtml(n.id)}">Edit</button>
+      <button type="button" class="danger note-delete-btn" data-note-id="${escapeHtml(n.id)}" data-card-id="${escapeHtml(n.card_id)}">Delete</button>
+    </div>
+  </li>`;
+}
+
+function spliceNotesCache(cardId, replaceWith) {
+  notesCache[cardId] = replaceWith;
+}
+
+async function addNote(cardId, formEl) {
+  const body = (formEl.querySelector("textarea[name='body']").value || "").trim();
+  if (!body) return;
+  const submit = formEl.querySelector('button[type="submit"]');
+  submit.disabled = true; submit.textContent = "Saving…";
+  try {
+    const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/notes`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ body }),
+    });
+    if (!r.ok) throw new Error("Add failed: " + r.status);
+    const note = await r.json();
+    const list = (notesCache[cardId] || []).slice();
+    list.unshift(note);
+    spliceNotesCache(cardId, list);
+    // Increment the visible count on the row & in any cached note count.
+    if (cardNoteCounts[cardId] != null) cardNoteCounts[cardId] += 1;
+    else cardNoteCounts[cardId] = 1;
+    await loadCardNotes(cardId);
+    // Re-render the row line so the count badge updates without a full reload.
+    renderHistoryList();
+  } catch (err) {
+    submit.disabled = false; submit.textContent = "Add note";
+    setHistoryError(err.message || String(err));
+  }
+}
+
+function enterNoteEdit(noteId) {
+  const li = document.querySelector(`.note-item[data-note-id="${cssEsc(noteId)}"]`);
+  if (!li) return;
+  const note = findNoteInCache(noteId);
+  if (!note) return;
+  li.classList.add("editing");
+  li.innerHTML = `
+    <form class="note-edit-form" data-note-id="${escapeHtml(noteId)}" data-card-id="${escapeHtml(note.card_id)}">
+      <textarea name="body" rows="3" required>${escapeHtml(note.body)}</textarea>
+      <div class="note-add-actions">
+        <button type="button" class="secondary note-edit-cancel-btn" data-note-id="${escapeHtml(noteId)}" data-card-id="${escapeHtml(note.card_id)}">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>`;
+  li.querySelector("textarea").focus();
+}
+
+function findNoteInCache(noteId) {
+  for (const cardId of Object.keys(notesCache)) {
+    const n = (notesCache[cardId] || []).find(x => x.id === noteId);
+    if (n) return n;
+  }
+  return null;
+}
+
+function cssEsc(s) {
+  // CSS attribute selector escape for arbitrary id strings.
+  return String(s).replace(/["\\]/g, "\\$&");
+}
+
+async function saveNoteEdit(noteId, cardId, formEl) {
+  const body = (formEl.querySelector("textarea[name='body']").value || "").trim();
+  if (!body) return;
+  const submit = formEl.querySelector('button[type="submit"]');
+  submit.disabled = true; submit.textContent = "Saving…";
+  try {
+    const r = await authFetch(`/notes/${encodeURIComponent(noteId)}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ body }),
+    });
+    if (!r.ok) throw new Error("Save failed: " + r.status);
+    const updated = await r.json();
+    const list = (notesCache[cardId] || []).map(n => n.id === noteId ? updated : n);
+    spliceNotesCache(cardId, list);
+    await loadCardNotes(cardId);
+  } catch (err) {
+    submit.disabled = false; submit.textContent = "Save";
+    setHistoryError(err.message || String(err));
+  }
+}
+
+async function deleteNote(noteId, cardId) {
+  if (!window.confirm("Delete this note? This can't be undone.")) return;
+  try {
+    const r = await authFetch(`/notes/${encodeURIComponent(noteId)}`, { method: "DELETE" });
+    if (!r.ok) throw new Error("Delete failed: " + r.status);
+    const list = (notesCache[cardId] || []).filter(n => n.id !== noteId);
+    spliceNotesCache(cardId, list);
+    if (cardNoteCounts[cardId] != null) cardNoteCounts[cardId] = Math.max(0, cardNoteCounts[cardId] - 1);
+    await loadCardNotes(cardId);
+    renderHistoryList();
+  } catch (err) {
+    setHistoryError(err.message || String(err));
+  }
+}
+
 /** "+ Add conversation" jumps to the Conversation tab with this card
  *  pre-selected so the rep can immediately record or type. */
 async function startConversationForCard(cardId) {
@@ -4186,6 +4479,54 @@ document.body.addEventListener("click", (e) => {
     openConversationInHistory(convRow.dataset.openConvId);
     return;
   }
+  // ---- Notes interactions -------------------------------------------------
+  const noteEditBtn = e.target.closest(".note-edit-btn");
+  if (noteEditBtn) {
+    e.preventDefault(); e.stopPropagation();
+    enterNoteEdit(noteEditBtn.dataset.noteId);
+    return;
+  }
+  const noteCancelBtn = e.target.closest(".note-edit-cancel-btn");
+  if (noteCancelBtn) {
+    e.preventDefault(); e.stopPropagation();
+    // Re-render the notes pane to revert the inline edit form.
+    loadCardNotes(noteCancelBtn.dataset.cardId);
+    return;
+  }
+  const noteDeleteBtn = e.target.closest(".note-delete-btn");
+  if (noteDeleteBtn) {
+    e.preventDefault(); e.stopPropagation();
+    deleteNote(noteDeleteBtn.dataset.noteId, noteDeleteBtn.dataset.cardId);
+    return;
+  }
+});
+
+// Submit handler for note add/edit forms (delegated so re-renders survive).
+document.body.addEventListener("submit", (e) => {
+  const addForm = e.target.closest(".note-add-form");
+  if (addForm) {
+    e.preventDefault();
+    addNote(addForm.dataset.cardId, addForm);
+    return;
+  }
+  const editForm = e.target.closest(".note-edit-form");
+  if (editForm) {
+    e.preventDefault();
+    saveNoteEdit(editForm.dataset.noteId, editForm.dataset.cardId, editForm);
+    return;
+  }
+});
+
+// Live character count + Submit gate for the note-add textarea.
+document.body.addEventListener("input", (e) => {
+  const ta = e.target.closest(".note-add-form textarea[name='body']");
+  if (!ta) return;
+  const form = ta.closest(".note-add-form");
+  const hint = form.querySelector(".note-add-hint");
+  const submit = form.querySelector('button[type="submit"]');
+  const len = (ta.value || "").trim().length;
+  if (hint) hint.textContent = `${len} characters`;
+  if (submit) submit.disabled = len === 0;
 });
 
 // ===========================================================================
@@ -4912,20 +5253,26 @@ historySearchEl.addEventListener("input", () => {
   renderHistoryList();
 });
 
+/** Bulk note counts keyed by card_id. Refreshed alongside cards on every
+ *  loadHistory() call so the customer rows can render "N notes" inline. */
+let cardNoteCounts = {};
+
 async function loadHistory() {
-  // Lazy: only fetch the section the user is currently looking at, plus the
-  // other one in parallel so the count chip is honest.
+  // Fan out three parallel calls so first paint comes back fast even on
+  // slower networks. Note counts are cheap (one GROUP BY on the server).
   historyListEl.innerHTML = `<div class="history-empty">Loading…</div>`;
   try {
-    const [cardsRes, convRes] = await Promise.all([
+    const [cardsRes, convRes, noteRes] = await Promise.all([
       authFetch("/cards?limit=100"),
       authFetch("/conversations?limit=100"),
+      authFetch("/notes/counts"),
     ]);
     historyState.cards         = cardsRes.ok ? await cardsRes.json() : [];
     historyState.conversations = convRes.ok  ? await convRes.json()  : [];
+    cardNoteCounts             = noteRes.ok  ? await noteRes.json()  : {};
     renderHistoryList();
   } catch (err) {
-    historyListEl.innerHTML = `<div class="history-empty err">Could not load history: ${escapeHtml(err.message || err)}</div>`;
+    historyListEl.innerHTML = `<div class="history-empty err">Could not load library: ${escapeHtml(err.message || err)}</div>`;
   }
 }
 
@@ -4982,7 +5329,7 @@ function renderHistoryList() {
   }
 
   const customersHtml = filteredCards.map(c =>
-    renderCustomerRow(c, convCountByCard.get(c.id) || 0)
+    renderCustomerRow(c, convCountByCard.get(c.id) || 0, cardNoteCounts[c.id] || 0)
   ).join("");
 
   // Bottom dock for orphans — collapsed accordion. Click to reveal.
@@ -5020,18 +5367,12 @@ function renderHistoryList() {
   }
 }
 
-/** Collapsed customer row: avatar, name + title, company + briefs. */
-function renderCustomerRow(c, convCount) {
+/** Collapsed customer row: avatar, name + title, company + briefs +
+ *  small badges for conversation and note counts. */
+function renderCustomerRow(c, convCount, noteCount) {
   const isExpanded = historyState.expandedId === c.id;
   const avatarId = "lib-avatar-" + c.id;
   const placeholder = "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
-  const personLine = [
-    c.name || "(unknown contact)",
-    c.title ? `<span class="lr-title">${escapeHtml(c.title)}</span>` : "",
-  ].filter(Boolean).join(" ");
-  // Briefs come from the cached light list (not yet — list endpoint returns
-  // basic columns only). For richer briefs in the row, we surface what the
-  // detail-cache has, falling back to a one-line summary line.
   const cached = historyState.detailCache[c.id];
   const personBrief  = cached?.research?.contact_brief || null;
   const companyBrief = cached?.research?.one_liner     || null;
@@ -5040,8 +5381,12 @@ function renderCustomerRow(c, convCount) {
       ${personBrief  ? `<div class="lr-brief"><span class="lr-brief-label">About</span> ${escapeHtml(personBrief)}</div>`  : ""}
       ${companyBrief ? `<div class="lr-brief"><span class="lr-brief-label">Company</span> ${escapeHtml(companyBrief)}</div>` : ""}
     </div>` : "";
-  const convBadge = convCount > 0
-    ? `<span class="lr-conv-count">${convCount} conversation${convCount === 1 ? "" : "s"}</span>`
+
+  const badges = [];
+  if (convCount > 0) badges.push(`${convCount} conversation${convCount === 1 ? "" : "s"}`);
+  if (noteCount > 0) badges.push(`${noteCount} note${noteCount === 1 ? "" : "s"}`);
+  const badgeText = badges.length
+    ? ` · <span class="lr-conv-count">${escapeHtml(badges.join(" · "))}</span>`
     : "";
 
   return `
@@ -5052,7 +5397,7 @@ function renderCustomerRow(c, convCount) {
           <div class="lr-name-line">${escapeHtml(c.name || "(unknown contact)")}${
             c.title ? ` <span class="lr-title">— ${escapeHtml(c.title)}</span>` : ""
           }</div>
-          <div class="lr-company-line">${escapeHtml(c.company || "—")}${convBadge ? " · " + convBadge : ""}</div>
+          <div class="lr-company-line">${escapeHtml(c.company || "—")}${badgeText}</div>
           ${briefHtml}
         </div>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -5267,20 +5612,20 @@ historyListEl.addEventListener("click", (e) => {
     return;
   }
 
-  // Per-customer subtab switching (Profile / Conversations).
+  // Per-customer subtab switching (Profile / Conversations / Notes).
   const subtabBtn = e.target.closest(".cust-subtab");
   if (subtabBtn) {
     e.stopPropagation();
     historyState.subtab = subtabBtn.dataset.custSubtab;
     const cardId = subtabBtn.dataset.cardId;
     if (historyState.expandedId === cardId) {
-      // Re-render just this customer's pane from cache.
       const cached = historyState.detailCache[cardId];
       const detailEl = document.getElementById("hd-" + cardId);
       if (cached && detailEl) {
         detailEl.innerHTML = renderCustomerExpanded(cached);
         if (cardId) loadHeroPhoto(cardId);
         if (historyState.subtab === "conversations") loadCardConversations(cardId);
+        if (historyState.subtab === "notes")         loadCardNotes(cardId);
       }
     }
     return;
@@ -5680,23 +6025,32 @@ async function loadAndRenderDetail(id) {
 }
 
 /** Wrap a card's full payload in the per-customer subtab shell.
- *  Profile = the original card brief renderer + manage actions.
- *  Conversations = the Tier 2 conversations-section host (lazy-loaded). */
+ *  Profile       = the card brief renderer + manage actions.
+ *  Conversations = the Tier 2 conversations-section host (lazy-loaded).
+ *  Notes         = simple per-customer notes list (lazy-loaded).
+ */
 function renderCustomerExpanded(c) {
   const sub = historyState.subtab || "profile";
-  const profileActive = sub === "profile";
+  const cid = escapeHtml(c.id);
+  const tab = (key, label) => `<button type="button"
+      class="cust-subtab ${sub === key ? "active" : ""}"
+      data-cust-subtab="${key}" data-card-id="${cid}">${label}</button>`;
+  let pane;
+  if (sub === "profile") {
+    pane = renderCardResultHtml(c) + renderCardManageActions(c);
+  } else if (sub === "conversations") {
+    pane = `<div id="card-convs-${cid}" class="card-convs-host"></div>`;
+  } else {
+    // notes
+    pane = `<div id="card-notes-${cid}" class="card-notes-host"></div>`;
+  }
   return `
     <div class="cust-subtabs" role="tablist">
-      <button type="button" class="cust-subtab ${profileActive ? "active" : ""}"
-              data-cust-subtab="profile" data-card-id="${escapeHtml(c.id)}">Profile</button>
-      <button type="button" class="cust-subtab ${!profileActive ? "active" : ""}"
-              data-cust-subtab="conversations" data-card-id="${escapeHtml(c.id)}">Conversations</button>
+      ${tab("profile",       "Profile")}
+      ${tab("conversations", "Conversations")}
+      ${tab("notes",         "Notes")}
     </div>
-    <div class="cust-subtab-pane">
-      ${profileActive
-        ? renderCardResultHtml(c) + renderCardManageActions(c)
-        : `<div id="card-convs-${escapeHtml(c.id)}" class="card-convs-host"></div>`}
-    </div>`;
+    <div class="cust-subtab-pane">${pane}</div>`;
 }
 
 /** Library tab — expanded card row uses the same Level-C renderer as the
