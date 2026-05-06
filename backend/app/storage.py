@@ -189,6 +189,9 @@ def init_db() -> None:
             )
             conn.execute("INSERT INTO notes SELECT * FROM notes_old")
             conn.execute("DROP TABLE notes_old")
+        # Optional one-line subject (CRM-style title above the body).
+        if not _has_col("notes", "subject"):
+            conn.execute("ALTER TABLE notes ADD COLUMN subject TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_card ON notes(card_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)")
 
@@ -860,10 +863,12 @@ def delete_company_profile(company: str) -> bool:
 
 def _row_to_note(row: sqlite3.Row) -> "Note":
     from .models import Note  # avoid circular import at module load
+    keys = row.keys()
     return Note(
         id=row["id"],
         card_id=row["card_id"],
-        user_id=row["user_id"] if "user_id" in row.keys() else None,
+        user_id=row["user_id"] if "user_id" in keys else None,
+        subject=row["subject"] if "subject" in keys else None,
         body=row["body"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -871,24 +876,51 @@ def _row_to_note(row: sqlite3.Row) -> "Note":
 
 
 def create_note(
-    card_id: Optional[str], body: str, user_id: Optional[str] = None,
+    card_id: Optional[str],
+    body: str,
+    user_id: Optional[str] = None,
+    subject: Optional[str] = None,
 ) -> "Note":
     """Create a note. ``card_id`` is optional — orphan notes live in the
     Library's Unlinked dock until the rep links them to a contact."""
     note_id = uuid.uuid4().hex[:12]
     now = datetime.now(timezone.utc).isoformat()
+    subj = (subject or "").strip() or None
     with _lock, _connect() as conn:
         conn.execute(
-            "INSERT INTO notes (id, card_id, user_id, body, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (note_id, card_id, user_id, body, now, now),
+            "INSERT INTO notes (id, card_id, user_id, subject, body, "
+            "                   created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (note_id, card_id, user_id, subj, body, now, now),
         )
         conn.commit()
     from .models import Note
     return Note(
-        id=note_id, card_id=card_id, user_id=user_id, body=body,
+        id=note_id, card_id=card_id, user_id=user_id, subject=subj, body=body,
         created_at=now, updated_at=now,
     )
+
+
+def update_note_subject(
+    note_id: str, subject: Optional[str], *, user_id: Optional[str] = None,
+) -> bool:
+    """Set or clear a note's subject. Empty/None clears it."""
+    now = datetime.now(timezone.utc).isoformat()
+    subj = (subject or "").strip() or None
+    with _lock, _connect() as conn:
+        if user_id is None:
+            cur = conn.execute(
+                "UPDATE notes SET subject = ?, updated_at = ? WHERE id = ?",
+                (subj, now, note_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE notes SET subject = ?, updated_at = ? "
+                "WHERE id = ? AND user_id = ?",
+                (subj, now, note_id, user_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def update_note_card_id(

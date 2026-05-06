@@ -238,6 +238,7 @@ class Note(BaseModel):
     id: str
     card_id: Optional[str] = None
     user_id: Optional[str] = None
+    subject: Optional[str] = None
     body: str
     created_at: str
     updated_at: str
@@ -245,13 +246,14 @@ class Note(BaseModel):
 
 class NoteCreate(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
+    subject: Optional[str] = Field(default=None, max_length=200)
     card_id: Optional[str] = None  # Orphan notes are allowed.
 
 
 class NoteUpdate(BaseModel):
-    """All fields optional — caller can update body, card_id, or both."""
+    """All fields optional — caller can update any subset.
+    The endpoint distinguishes 'don't touch' from 'unlink/clear' by
+    inspecting whether each key is present in the request body."""
     body: Optional[str] = Field(default=None, max_length=5000)
+    subject: Optional[str] = Field(default=None, max_length=200)
     card_id: Optional[str] = None
-    # `card_id` of None could mean "don't touch" OR "unlink". We resolve
-    # the ambiguity in the endpoint: presence of the key in the request
-    # body is what matters, not the value alone.

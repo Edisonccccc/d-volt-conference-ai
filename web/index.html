@@ -888,31 +888,117 @@
     background: var(--surface);
   }
 
-  /* Per-customer subtabs */
+  /* Per-customer segmented subtabs (Profile / Conversations / Notes) —
+     a single rounded card divided into three buttons. The active button
+     "lifts" with the brand gradient; idle ones stay transparent but show
+     icons + labels so the rep can tell what's clickable. */
   .cust-subtabs {
     display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 16px;
+    gap: 0;
+    padding: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    margin-bottom: 12px;
   }
   .cust-subtab {
-    padding: 10px 16px;
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
     background: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
+    border-radius: var(--radius-pill);
     color: var(--muted);
-    font-weight: 500;
+    font-weight: 600;
     font-size: 13px;
     margin: 0;
     cursor: pointer;
-    transition: color 120ms ease, border-color 120ms ease;
-    border-radius: 0;
+    transition: background var(--transition), color var(--transition),
+                box-shadow var(--transition);
   }
-  .cust-subtab:hover { color: var(--ink); }
+  .cust-subtab:hover:not(.active) {
+    color: var(--ink);
+    background: var(--surface);
+  }
   .cust-subtab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    background: var(--brand-grad);
+    color: white;
+    box-shadow: 0 1px 3px rgba(124, 58, 237, 0.25);
   }
+  .cust-subtab-ico {
+    display: inline-flex;
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+  }
+  .cust-subtab-ico svg { width: 100%; height: 100%; }
+  .cust-subtab-label { white-space: nowrap; }
+  /* On narrow phones, drop the labels so all three pills always fit. */
+  @media (max-width: 480px) {
+    .cust-subtab-label { display: none; }
+    .cust-subtab { padding: 9px; }
+    .cust-subtab-ico { width: 18px; height: 18px; }
+  }
+
+  /* Email-draft button below the segmented tabs. */
+  .cust-email-row {
+    display: flex;
+    margin-bottom: 14px;
+  }
+  .cust-email-btn {
+    flex: 1;
+    margin: 0;
+    padding: 9px 14px;
+    background: var(--surface);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-input);
+    font-weight: 600;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+  }
+  .cust-email-btn:hover {
+    background: var(--accent);
+    color: white;
+  }
+
+  /* Email-draft modal — wider sheet with a copy-friendly preformatted block. */
+  .modal-sheet.email-modal {
+    max-width: 640px;
+  }
+  .email-modal .email-meta {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .email-modal .email-body {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    padding: 14px 16px;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--ink);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  .email-modal .email-empty {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 8px 0 12px;
+  }
+
   .cust-subtab-pane { /* container for the active subtab content */ }
 
   /* Orphan-conversation dock at the bottom of the list */
@@ -979,6 +1065,38 @@
     background: var(--accent);
     color: white;
     border: 1px solid var(--accent);
+  }
+
+  /* Note subject (one-line title above the body, in forms and rows) */
+  .note-subject-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+  }
+  .note-subject-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  }
+  .note-subject {
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .rnr-subject {
+    font-weight: 600;
+    color: var(--ink);
+    font-size: 13px;
+    margin-bottom: 2px;
   }
 
   /* ----- Notes top-level tab ----------------------------------------- */
@@ -2884,6 +3002,10 @@
       </label>
     </div>
 
+    <input type="text" id="noteSubjectInput" class="note-subject-input"
+      placeholder="Subject (optional) — e.g. 'ERP migration timeline' or 'Personal preferences'"
+      maxlength="200" />
+
     <textarea id="noteInput" class="conv-text-input" rows="6"
       placeholder="Jot something quickly. Pick a contact above to attach this note, or save it now and link it from the Library later."></textarea>
 
@@ -4449,6 +4571,8 @@ function renderNotesPane(host, cardId, notes) {
         </h3>
       </div>
       <form class="note-add-form" data-card-id="${escapeHtml(cardId)}">
+        <input type="text" name="subject" class="note-subject-input"
+          placeholder="Subject (optional)" maxlength="200"/>
         <textarea name="body" rows="3"
           placeholder="Add a note about this contact — preferences, background, anything to remember…"
           required></textarea>
@@ -4468,8 +4592,12 @@ function renderNoteRow(n) {
   const edited = (n.updated_at && n.updated_at !== n.created_at)
     ? ` · edited ${fmtRelative(n.updated_at)}` : "";
   const cidAttr = n.card_id ? `data-card-id="${escapeHtml(n.card_id)}"` : "";
+  const subjectHtml = n.subject
+    ? `<div class="note-subject">${escapeHtml(n.subject)}</div>`
+    : "";
   return `<li class="note-item" data-note-id="${escapeHtml(n.id)}">
     <div class="note-meta">${escapeHtml(when)}${escapeHtml(edited)}</div>
+    ${subjectHtml}
     <div class="note-body">${escapeHtml(n.body)}</div>
     <div class="note-row-actions">
       <button type="button" class="secondary note-relink-btn" data-note-id="${escapeHtml(n.id)}" ${cidAttr}>Move to…</button>
@@ -4484,7 +4612,8 @@ function spliceNotesCache(cardId, replaceWith) {
 }
 
 async function addNote(cardId, formEl) {
-  const body = (formEl.querySelector("textarea[name='body']").value || "").trim();
+  const body    = (formEl.querySelector("textarea[name='body']").value || "").trim();
+  const subject = (formEl.querySelector("input[name='subject']")?.value || "").trim() || null;
   if (!body) return;
   const submit = formEl.querySelector('button[type="submit"]');
   submit.disabled = true; submit.textContent = "Saving…";
@@ -4492,7 +4621,7 @@ async function addNote(cardId, formEl) {
     const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/notes`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, subject }),
     });
     if (!r.ok) throw new Error("Add failed: " + r.status);
     const note = await r.json();
@@ -4518,10 +4647,13 @@ function enterNoteEdit(noteId) {
   if (!note) return;
   li.classList.add("editing");
   li.innerHTML = `
-    <form class="note-edit-form" data-note-id="${escapeHtml(noteId)}" data-card-id="${escapeHtml(note.card_id)}">
+    <form class="note-edit-form" data-note-id="${escapeHtml(noteId)}" data-card-id="${escapeHtml(note.card_id || "")}">
+      <input type="text" name="subject" class="note-subject-input"
+        value="${escapeHtml(note.subject || "")}"
+        placeholder="Subject (optional)" maxlength="200"/>
       <textarea name="body" rows="3" required>${escapeHtml(note.body)}</textarea>
       <div class="note-add-actions">
-        <button type="button" class="secondary note-edit-cancel-btn" data-note-id="${escapeHtml(noteId)}" data-card-id="${escapeHtml(note.card_id)}">Cancel</button>
+        <button type="button" class="secondary note-edit-cancel-btn" data-note-id="${escapeHtml(noteId)}" data-card-id="${escapeHtml(note.card_id || "")}">Cancel</button>
         <button type="submit">Save</button>
       </div>
     </form>`;
@@ -4542,7 +4674,8 @@ function cssEsc(s) {
 }
 
 async function saveNoteEdit(noteId, cardId, formEl) {
-  const body = (formEl.querySelector("textarea[name='body']").value || "").trim();
+  const body    = (formEl.querySelector("textarea[name='body']").value || "").trim();
+  const subject = (formEl.querySelector("input[name='subject']")?.value || "").trim() || null;
   if (!body) return;
   const submit = formEl.querySelector('button[type="submit"]');
   submit.disabled = true; submit.textContent = "Saving…";
@@ -4550,7 +4683,7 @@ async function saveNoteEdit(noteId, cardId, formEl) {
     const r = await authFetch(`/notes/${encodeURIComponent(noteId)}`, {
       method: "PATCH",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, subject }),
     });
     if (!r.ok) throw new Error("Save failed: " + r.status);
     const updated = await r.json();
@@ -5429,6 +5562,7 @@ let recentNotes = [];
 // =========================================================================
 
 const noteCardSelect    = document.getElementById("noteCardSelect");
+const noteSubjectInput  = document.getElementById("noteSubjectInput");
 const noteInput         = document.getElementById("noteInput");
 const noteInputHint     = document.getElementById("noteInputHint");
 const saveNoteBtn       = document.getElementById("saveNoteBtn");
@@ -5480,8 +5614,9 @@ function refreshNoteInputState() {
 }
 
 async function saveNoteFromTab() {
-  const cardId = noteCardSelect.value || null;
-  const body   = (noteInput.value || "").trim();
+  const cardId  = noteCardSelect.value || null;
+  const subject = (noteSubjectInput.value || "").trim() || null;
+  const body    = (noteInput.value || "").trim();
   if (!body) return;
   saveNoteBtn.disabled = true;
   saveNoteBtn.querySelector("span").textContent = "Saving…";
@@ -5490,17 +5625,17 @@ async function saveNoteFromTab() {
     const r = await authFetch("/notes", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ body, card_id: cardId }),
+      body: JSON.stringify({ body, subject, card_id: cardId }),
     });
     if (!r.ok) throw new Error("Save failed: " + r.status);
     await r.json();
-    // Invalidate caches that other views read from so they pick up the new note.
     if (cardId) {
       delete notesCache[cardId];
       cardNoteCounts[cardId] = (cardNoteCounts[cardId] || 0) + 1;
     }
 
     noteInput.value = "";
+    noteSubjectInput.value = "";
     refreshNoteInputState();
     setNoteStatus(cardId ? "Saved." : "Saved as unlinked. Attach it from the Library when you're ready.", false);
     setTimeout(() => setNoteStatus(""), 3500);
@@ -5535,13 +5670,17 @@ async function loadRecentNotes() {
 function renderRecentNoteRow(n) {
   const when = n.created_at ? fmtRelative(n.created_at) : "";
   const customer = n.card_id
-    ? `${n.customer_name || "(unknown contact)"}${n.customer_company ? " · " + n.customer_company : ""}`
+    ? `${escapeHtml(n.customer_name || "(unknown contact)")}${n.customer_company ? " · " + escapeHtml(n.customer_company) : ""}`
     : `<span class="rnr-unlinked">Unlinked</span>`;
+  const subjectHtml = n.subject
+    ? `<div class="rnr-subject">${escapeHtml(n.subject)}</div>`
+    : "";
   return `
     <button type="button" class="recent-note-row"
             data-card-id="${escapeHtml(n.card_id || "")}"
             data-note-id="${escapeHtml(n.id)}">
       <div class="rnr-meta">${customer} · ${escapeHtml(when)}</div>
+      ${subjectHtml}
       <div class="rnr-body">${escapeHtml(n.body)}</div>
     </button>`;
 }
@@ -5601,9 +5740,12 @@ async function loadHistory() {
 function renderOrphanNoteRow(n) {
   const when = n.created_at ? fmtRelative(n.created_at) : "";
   const safeId = escapeHtml(n.id);
-  // Two-line clamp via inline style so we don't need another CSS rule.
+  const subjectHtml = n.subject
+    ? `<div class="rnr-subject">${escapeHtml(n.subject)}</div>`
+    : "";
   return `<div class="orphan-note-row" data-note-id="${safeId}">
     <div class="rnr-meta">${escapeHtml(when)}</div>
+    ${subjectHtml}
     <div class="rnr-body" style="-webkit-line-clamp:3;">${escapeHtml(n.body || "")}</div>
     <div class="orphan-note-actions">
       <button type="button" class="orphan-note-link-btn" data-note-id="${safeId}">Link to a contact</button>
@@ -5972,6 +6114,14 @@ historyListEl.addEventListener("click", (e) => {
   if (deleteConvBtn) {
     e.stopPropagation();
     deleteConvFromLibrary(deleteConvBtn.dataset.convId);
+    return;
+  }
+
+  // Email-draft button (per-customer)
+  const emailBtn = e.target.closest(".cust-email-btn");
+  if (emailBtn) {
+    e.stopPropagation();
+    openEmailDraftModal(emailBtn.dataset.cardId);
     return;
   }
 
@@ -6440,27 +6590,59 @@ async function loadAndRenderDetail(id) {
  *  Profile       = the card brief renderer + manage actions.
  *  Conversations = the Tier 2 conversations-section host (lazy-loaded).
  *  Notes         = simple per-customer notes list (lazy-loaded).
+ *
+ *  Underneath the three segmented subtabs sits an Email-draft button
+ *  that opens the most-recent follow-up email Claude drafted from any
+ *  conversation linked to this customer.
  */
 function renderCustomerExpanded(c) {
   const sub = historyState.subtab || "profile";
   const cid = escapeHtml(c.id);
-  const tab = (key, label) => `<button type="button"
+  const tab = (key, label, iconSvg) => `<button type="button"
       class="cust-subtab ${sub === key ? "active" : ""}"
-      data-cust-subtab="${key}" data-card-id="${cid}">${label}</button>`;
+      data-cust-subtab="${key}" data-card-id="${cid}"
+      role="tab" aria-selected="${sub === key ? "true" : "false"}">
+      <span class="cust-subtab-ico" aria-hidden="true">${iconSvg}</span>
+      <span class="cust-subtab-label">${label}</span>
+    </button>`;
+  // Compact 18px Lucide-ish icons for each subtab.
+  const profileIco = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/></svg>`;
+  const convIco = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+  const noteIco = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="9" y1="13" x2="15" y2="13"/>
+      <line x1="9" y1="17" x2="13" y2="17"/></svg>`;
+
   let pane;
   if (sub === "profile") {
     pane = renderCardResultHtml(c) + renderCardManageActions(c);
   } else if (sub === "conversations") {
     pane = `<div id="card-convs-${cid}" class="card-convs-host"></div>`;
   } else {
-    // notes
     pane = `<div id="card-notes-${cid}" class="card-notes-host"></div>`;
   }
   return `
     <div class="cust-subtabs" role="tablist">
-      ${tab("profile",       "Profile")}
-      ${tab("conversations", "Conversations")}
-      ${tab("notes",         "Notes")}
+      ${tab("profile",       "Profile",       profileIco)}
+      ${tab("conversations", "Conversations", convIco)}
+      ${tab("notes",         "Notes",         noteIco)}
+    </div>
+    <div class="cust-email-row">
+      <button type="button" class="cust-email-btn" data-card-id="${cid}">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+          <polyline points="22 6 12 13 2 6"/>
+        </svg>
+        <span>Open email draft</span>
+      </button>
     </div>
     <div class="cust-subtab-pane">${pane}</div>`;
 }
@@ -6693,6 +6875,84 @@ function showDuplicateModal(data) {
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) finish("view"); });
     const onEsc = (e) => { if (e.key === "Escape") finish("view"); };
     document.addEventListener("keydown", onEsc);
+  });
+}
+
+/** Open a modal showing the most recent follow-up email Claude drafted from
+ *  any conversation linked to this customer. Convenience: one click from the
+ *  customer's Library row to "what should I send them?" */
+async function openEmailDraftModal(cardId) {
+  if (!cardId) return;
+  // Build a placeholder modal immediately so it feels responsive while we fetch.
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-sheet email-modal" role="dialog" aria-modal="true" aria-labelledby="emailModalTitle">
+      <h3 id="emailModalTitle">Email draft</h3>
+      <p class="email-meta" id="emailModalMeta">Loading…</p>
+      <div id="emailModalBodyHost"><div class="skeleton long"></div><div class="skeleton long"></div></div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="emailModalCopy" disabled>Copy</button>
+        <div style="flex:1"></div>
+        <button type="button" class="secondary" id="emailModalClose">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  const close = () => { backdrop.remove(); document.removeEventListener("keydown", onEsc); };
+  const onEsc = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onEsc);
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+  document.getElementById("emailModalClose").addEventListener("click", close);
+
+  let bodyText = "";
+  let metaText = "";
+  let foundConvId = null;
+  try {
+    // 1. List conversations on this customer (newest first by start time).
+    const r = await authFetch(`/cards/${encodeURIComponent(cardId)}/conversations`);
+    if (!r.ok) throw new Error("status " + r.status);
+    const convs = await r.json();
+    // 2. Walk newest→oldest, fetch full payload, take the first one with a
+    //    follow_up_email. Most reps want the latest draft.
+    for (const c of convs) {
+      const fullRes = await authFetch(`/conversations/${encodeURIComponent(c.id)}`);
+      if (!fullRes.ok) continue;
+      const full = await fullRes.json();
+      const email = full?.summary?.follow_up_email;
+      if (email && email.trim()) {
+        bodyText = email.trim();
+        const when = c.started_at ? fmtRelative(c.started_at) : "";
+        metaText = `From conversation ${when ? "· " + when : ""}`;
+        foundConvId = c.id;
+        break;
+      }
+    }
+  } catch (err) {
+    document.getElementById("emailModalMeta").textContent = "Couldn't load drafts.";
+    document.getElementById("emailModalBodyHost").innerHTML =
+      `<div class="email-empty">${escapeHtml(err.message || String(err))}</div>`;
+    return;
+  }
+
+  const metaEl = document.getElementById("emailModalMeta");
+  const hostEl = document.getElementById("emailModalBodyHost");
+  const copyBtn = document.getElementById("emailModalCopy");
+
+  if (!bodyText) {
+    metaEl.textContent = "No draft yet";
+    hostEl.innerHTML = `<div class="email-empty">No follow-up email has been drafted for this contact yet. Record or type a conversation first — Claude generates the draft as part of the summary.</div>`;
+    return;
+  }
+
+  metaEl.textContent = metaText;
+  hostEl.innerHTML = `<div class="email-body">${escapeHtml(bodyText)}</div>`;
+  copyBtn.disabled = false;
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(bodyText);
+      copyBtn.textContent = "Copied ✓";
+      setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000);
+    } catch { copyBtn.textContent = "Copy failed"; }
   });
 }
 

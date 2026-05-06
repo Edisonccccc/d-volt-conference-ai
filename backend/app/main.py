@@ -765,6 +765,7 @@ def list_my_notes(
             "id":              n.id,
             "card_id":         n.card_id,
             "user_id":         n.user_id,
+            "subject":         n.subject,
             "body":            n.body,
             "created_at":      n.created_at,
             "updated_at":      n.updated_at,
@@ -800,7 +801,9 @@ def create_card_note(
     body = (payload.body or "").strip()
     if not body:
         raise HTTPException(status_code=400, detail="body cannot be empty")
-    return storage.create_note(card_id, body, user_id=user.id)
+    return storage.create_note(
+        card_id, body, user_id=user.id, subject=payload.subject,
+    )
 
 
 @app.post("/notes", response_model=Note, status_code=201)
@@ -809,9 +812,9 @@ def create_note_endpoint(
 ) -> Note:
     """Create a note, optionally attached to a card.
 
-    Body: ``{"body": "...", "card_id": "..." | null}``. Orphan notes
-    (no card_id) show up in the Library's Unlinked dock so the rep can
-    attach them to a contact later.
+    Body: ``{"body": "...", "subject": "...", "card_id": "..." | null}``.
+    Orphan notes (no card_id) show up in the Library's Unlinked dock so
+    the rep can attach them to a contact later.
     """
     body = (payload.body or "").strip()
     if not body:
@@ -819,7 +822,9 @@ def create_note_endpoint(
     if payload.card_id:
         if storage.get_card(payload.card_id, user_id=_scope_for(user)) is None:
             raise HTTPException(status_code=404, detail="Card not found")
-    return storage.create_note(payload.card_id or None, body, user_id=user.id)
+    return storage.create_note(
+        payload.card_id or None, body, user_id=user.id, subject=payload.subject,
+    )
 
 
 @app.patch("/notes/{note_id}", response_model=Note)
@@ -849,6 +854,13 @@ async def update_note_endpoint(
         if not body:
             raise HTTPException(status_code=400, detail="body cannot be empty")
         storage.update_note(note_id, body, user_id=_scope_for(user))
+
+    if "subject" in payload:
+        # None / empty string means "clear the subject" (still a valid op).
+        new_subject = payload.get("subject")
+        if new_subject is not None and not isinstance(new_subject, str):
+            raise HTTPException(status_code=400, detail="subject must be a string or null")
+        storage.update_note_subject(note_id, new_subject, user_id=_scope_for(user))
 
     if "card_id" in payload:
         new_card_id = payload.get("card_id")
