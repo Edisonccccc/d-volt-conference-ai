@@ -747,20 +747,41 @@
   .card-conv-row {
     display: block;
     width: 100%;
-    text-align: left;
-    padding: 10px 12px;
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--radius-input);
-    cursor: pointer;
-    margin: 0;
     color: var(--ink);
     transition: background 120ms ease, border-color 120ms ease;
+    overflow: hidden;
   }
-  .card-conv-row:hover {
+  .card-conv-row:hover { border-color: var(--accent); }
+  .card-conv-row.expanded { border-color: var(--accent); background: var(--surface); }
+  .card-conv-row .ccr-summary {
+    display: grid;
+    grid-template-columns: 1fr 18px;
+    gap: 8px;
+    padding: 10px 12px;
+    align-items: center;
+    cursor: pointer;
+  }
+  .card-conv-row .ccr-summary:hover { background: var(--surface); }
+  .card-conv-row .chev {
+    color: var(--muted);
+    transition: transform 200ms ease;
+    flex-shrink: 0;
+  }
+  .card-conv-row.expanded .chev { transform: rotate(180deg); color: var(--accent); }
+  .ccr-detail {
+    border-top: 1px solid var(--border);
+    padding: 14px 12px;
     background: var(--surface);
-    border-color: var(--accent);
+    cursor: default;
   }
+  /* Trim the top margin of the first card inside the detail so the
+     transition between header and content reads as a single block. */
+  .ccr-detail > .result-card:first-child,
+  .ccr-detail > .conv-link-actions:first-child,
+  .ccr-detail > .conv-link-prompt:first-child { margin-top: 0; }
   .ccr-meta {
     display: flex;
     align-items: center;
@@ -4441,12 +4462,46 @@ async function loadCardConversations(cardId) {
       ${headerHtml}
       <div class="card-convs-list">${convs.map(renderCardConversationRow).join("")}</div>
     </div>`;
+
+  // If a conv row is expanded, async-fill its detail block with the full
+  // structured summary (key topics, concerns, commitments, next steps,
+  // follow-up email, transcript) plus link/edit/delete actions.
+  if (historyState.expandedConvId) {
+    populateExpandedConvDetail(historyState.expandedConvId);
+  }
+}
+
+/** Fetch the full conversation payload (cached) and replace the loading
+ *  skeleton in the expanded row's `.ccr-detail` host. */
+async function populateExpandedConvDetail(convId) {
+  const detailEl = document.getElementById("ccrd-" + convId);
+  if (!detailEl) return;
+  let full = historyState.detailCache[convId];
+  if (!full) {
+    try {
+      const r = await authFetch(`/conversations/${encodeURIComponent(convId)}`);
+      if (!r.ok) throw new Error("status " + r.status);
+      full = await r.json();
+      historyState.detailCache[convId] = full;
+    } catch (err) {
+      detailEl.innerHTML =
+        `<div class="history-empty err">Couldn't load conversation: ${escapeHtml(err.message || err)}</div>`;
+      return;
+    }
+  }
+  // Reuse the same renderers History uses so the look-and-feel is identical:
+  // change-contact actions on top, structured summary + transcript in the
+  // middle, edit/delete actions at the bottom.
+  detailEl.innerHTML = renderConvLinkActions(full)
+                     + renderConversationSummaryHtml(full)
+                     + renderConvManageActions(full);
 }
 
 function renderCardConversationRow(c) {
   const dt  = c.started_at ? fmtRelative(c.started_at) : "";
   const dur = fmtDuration(c.started_at, c.ended_at);
-  // Mic icon for recorded conversations, pencil for typed notes.
+  const isExpanded = historyState.expandedConvId === c.id;
+  // Mic icon for recorded conversations.
   const typeIcon = c.has_audio
     ? `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -4466,14 +4521,29 @@ function renderCardConversationRow(c) {
         c.status === "ready" ? "(no summary text)"
                              : "Status: " + (c.status || "unknown")
       )}</span>`;
+  // Row is a div (not <button>) so nested action buttons in the expanded
+  // detail render as valid DOM; click is delegated.
   return `
-    <button type="button" class="card-conv-row" data-open-conv-id="${escapeHtml(c.id)}">
-      <div class="ccr-meta">
-        <span class="ccr-type">${typeIcon}<span>${escapeHtml(typeLabel)}</span></span>
-        <span class="ccr-when">${escapeHtml(dt)}${dur ? " · " + escapeHtml(dur) : ""}</span>
+    <div class="card-conv-row ${isExpanded ? "expanded" : ""}"
+         data-open-conv-id="${escapeHtml(c.id)}"
+         role="button" tabindex="0">
+      <div class="ccr-summary">
+        <div class="ccr-summary-content">
+          <div class="ccr-meta">
+            <span class="ccr-type">${typeIcon}<span>${escapeHtml(typeLabel)}</span></span>
+            <span class="ccr-when">${escapeHtml(dt)}${dur ? " · " + escapeHtml(dur) : ""}</span>
+          </div>
+          <div class="ccr-excerpt">${excerpt}</div>
+        </div>
+        <svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
       </div>
-      <div class="ccr-excerpt">${excerpt}</div>
-    </button>`;
+      ${isExpanded
+        ? `<div class="ccr-detail" id="ccrd-${escapeHtml(c.id)}">${renderHistoryDetailLoading()}</div>`
+        : ""}
+    </div>`;
 }
 
 // ---- Notes (per-customer free-form context) -----------------------------
@@ -4705,8 +4775,20 @@ document.body.addEventListener("click", (e) => {
   }
   const convRow = e.target.closest(".card-conv-row");
   if (convRow) {
+    // Don't toggle when clicking nested actions inside the expanded detail.
+    if (e.target.closest(".ccr-detail button, .ccr-detail a, .ccr-detail input, .ccr-detail textarea, .ccr-detail label, .ccr-detail form")) {
+      return;
+    }
     e.preventDefault(); e.stopPropagation();
-    openConversationInHistory(convRow.dataset.openConvId);
+    const convId = convRow.dataset.openConvId;
+    // Find which card host this row belongs to (Library customer expansion
+    // OR live result panel — both render with `card-convs-host` wrappers).
+    const host = convRow.closest(".card-convs-host");
+    if (!host) return;
+    const cardId = host.id.replace(/^card-convs-/, "");
+    historyState.expandedConvId =
+      historyState.expandedConvId === convId ? null : convId;
+    loadCardConversations(cardId);
     return;
   }
   // ---- Notes interactions -------------------------------------------------
@@ -5354,8 +5436,10 @@ let historyState = {
   conversations: null,    // array from /conversations
   searchQuery: "",
   expandedId: null,       // id currently expanded (card OR orphan conv)
-  subtab: "profile",      // per-customer subtab: "profile" | "conversations"
+  expandedConvId: null,   // conversation row expanded inline within a customer's Conversations subtab
+  subtab: "profile",      // per-customer subtab: "profile" | "conversations" | "notes"
   unlinkedOpen: false,    // dock-accordion state
+  unlinkedNotesOpen: false,
   detailCache: {},        // id -> full record (avoid refetch)
 };
 
