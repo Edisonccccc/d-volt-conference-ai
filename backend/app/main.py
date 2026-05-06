@@ -35,7 +35,7 @@ from .models import (
     UserCreate,
     UserLogin,
 )
-from .pdf_report import render_conversation_report
+from .pdf_report import render_conversation_report, render_report
 from .pipeline import continue_pipeline, run_pipeline
 from .transcribe import transcribe_audio
 
@@ -296,6 +296,64 @@ def email_report(
     )
 
 
+@app.patch("/cards/{card_id}")
+def patch_card_endpoint(
+    card_id: str, payload: dict, user: User = Depends(current_user),
+) -> dict:
+    """Library management: edit a card's extracted fields after the fact.
+
+    Body: ``{"extracted": {<partial ExtractedCard fields>}}``. Only the
+    fields you provide are overwritten. The brief PDF is re-rendered
+    inline if status='ready' so the printable copy reflects the edits.
+    Reps can edit their own; managers can edit anyone's.
+    """
+    record = storage.get_card(card_id, user_id=_scope_for(user))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    incoming = (payload or {}).get("extracted")
+    if not isinstance(incoming, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Body must be {\"extracted\": {...}}",
+        )
+
+    # Merge: start with whatever's already on the card (or a blank
+    # ExtractedCard), overlay caller-provided fields, validate.
+    base = record.extracted.model_dump() if record.extracted else {}
+    base.update(incoming)
+    try:
+        from .models import ExtractedCard
+        merged = ExtractedCard.model_validate(base)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Invalid extracted fields: {exc}")
+    storage.update_extracted(card_id, merged)
+
+    # Re-render the brief PDF if it was already produced.
+    refreshed = storage.get_card(card_id, user_id=_scope_for(user))
+    if refreshed is not None and refreshed.status == "ready":
+        try:
+            out = storage.report_dir() / f"{card_id}.pdf"
+            render_report(refreshed, out)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("card %s PDF re-render after edit failed: %s", card_id, exc)
+    return refreshed.model_dump() if refreshed else {}
+
+
+@app.delete("/cards/{card_id}")
+def delete_card_endpoint(
+    card_id: str, user: User = Depends(current_user),
+) -> dict:
+    """Permanently remove a card. Linked conversations are orphaned, not
+    cascade-deleted, so the rep doesn't lose their meeting notes."""
+    record = storage.get_card(card_id, user_id=_scope_for(user))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if not storage.delete_card(card_id):
+        raise HTTPException(status_code=404, detail="Card not found")
+    return {"ok": True, "id": card_id}
+
+
 @app.post("/cards/{card_id}/continue")
 def continue_card(
     card_id: str,
@@ -536,54 +594,87 @@ def get_conversation_endpoint(
 
 @app.patch("/conversations/{conv_id}")
 def update_conversation_endpoint(
-    conv_id: str, payload: dict, user: User = Depends(current_user),
+    conv_id: str,
+    payload: dict,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
 ) -> dict:
-    """Late-bind a card to a conversation (record-then-scan flow).
+    """Update a conversation. Currently supports two edits:
 
-    Body: ``{"card_id": "..." | null}``.
+    - ``{"card_id": "..." | null}`` — late-bind / change / unlink the
+      attached contact. Re-renders the PDF if the conversation is ready.
+    - ``{"transcript": "..."}`` — overwrite the transcript text and
+      schedule a re-summary. Status flips back to 'summarizing'; the
+      frontend should resume polling. The summary, follow-up email, and
+      PDF will all refresh once the background task completes.
 
-    Reps can update conversations they own; managers can update any. The
-    target card must also belong to the rep (validated when not a manager).
-    If the conversation has already finished (status='ready'), we re-render
-    its PDF inline so the brief reflects the new contact. In-flight
-    conversations don't need a re-render — the pipeline picks up the new
-    card_id when it eventually renders.
+    Both fields can be provided together. Reps can edit conversations
+    they own; managers can edit any.
     """
     rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
     if rec is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if "card_id" not in payload:
-        return rec.model_dump()  # nothing to change
+    touched_card_id = "card_id" in payload
+    touched_transcript = "transcript" in payload
+    if not (touched_card_id or touched_transcript):
+        return rec.model_dump()
 
-    card_id = payload.get("card_id")
-    if card_id is not None:
-        if not isinstance(card_id, str) or not card_id:
+    # ---- card_id (link/unlink) ----
+    if touched_card_id:
+        card_id = payload.get("card_id")
+        if card_id is not None:
+            if not isinstance(card_id, str) or not card_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="card_id must be a non-empty string or null",
+                )
+            if storage.get_card(card_id, user_id=_scope_for(user)) is None:
+                raise HTTPException(status_code=404, detail="Card not found")
+        storage.update_conversation_card_id(
+            conv_id, card_id, user_id=_scope_for(user),
+        )
+
+    # ---- transcript (re-summarize) ----
+    if touched_transcript:
+        new_transcript = payload.get("transcript")
+        if not isinstance(new_transcript, str) or not new_transcript.strip():
             raise HTTPException(
-                status_code=400, detail="card_id must be a non-empty string or null",
+                status_code=400,
+                detail="transcript must be a non-empty string",
             )
-        # Validate ownership of the target card (managers bypass _scope_for).
-        if storage.get_card(card_id, user_id=_scope_for(user)) is None:
-            raise HTTPException(status_code=404, detail="Card not found")
+        storage.update_conversation_transcript(conv_id, new_transcript)
+        storage.update_conversation_status(conv_id, "summarizing")
+        # Re-summarize with the same pipeline used after audio upload —
+        # picks up the (possibly newly-linked) card_id automatically.
+        background_tasks.add_task(_run_summary, conv_id)
+        rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
+        return rec.model_dump() if rec else {}
 
-    # Apply the update with the same ownership scope as the read.
-    storage.update_conversation_card_id(
-        conv_id, card_id, user_id=_scope_for(user),
-    )
-
-    # If the brief PDF was already produced, regenerate it so the linked
-    # card actually shows up in the report. Cheap (no LLM call).
+    # ---- card_id only: re-render PDF if already ready ----
     rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
     if rec is not None and rec.status == "ready":
         try:
-            card = storage.get_card(card_id) if card_id else None
+            card = storage.get_card(rec.card_id) if rec.card_id else None
             out = storage.report_dir() / f"conv-{conv_id}.pdf"
             render_conversation_report(rec, card, out)
         except Exception as exc:  # noqa: BLE001
             log.warning("conv %s PDF re-render after link failed: %s", conv_id, exc)
-            # Don't fail the link — the row was updated, PDF is just stale.
 
     return rec.model_dump() if rec else {}
+
+
+@app.delete("/conversations/{conv_id}")
+def delete_conversation_endpoint(
+    conv_id: str, user: User = Depends(current_user),
+) -> dict:
+    """Permanently remove a conversation, its audio file, and its PDF."""
+    rec = storage.get_conversation(conv_id, user_id=_scope_for(user))
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if not storage.delete_conversation(conv_id):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"ok": True, "id": conv_id}
 
 
 @app.get("/conversations/{conv_id}/report.pdf")

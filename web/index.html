@@ -798,6 +798,114 @@
   }
   .ccr-status-only { color: var(--muted); font-style: italic; }
 
+  /* ----- Library: edit + delete actions on detail panels ------------- */
+  .library-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .library-actions button {
+    margin-top: 0;
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+  .library-actions button.danger {
+    background: transparent;
+    color: var(--err);
+    border: 1px solid var(--err);
+  }
+  .library-actions button.danger:hover {
+    background: var(--err-soft);
+  }
+
+  /* Inline edit shells (replace the read-only detail when editing) */
+  .library-edit-shell {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 14px 16px;
+  }
+  .library-edit-title {
+    margin: 0 0 4px;
+    font-size: 16px;
+    color: var(--ink);
+    text-transform: none;
+    letter-spacing: -0.01em;
+  }
+  .library-edit-hint {
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .library-edit-form { display: flex; flex-direction: column; gap: 10px; }
+  .led-row {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    align-items: center;
+    gap: 10px;
+  }
+  .led-row > span {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .led-row input,
+  .led-row textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .led-row textarea { resize: vertical; min-height: 60px; }
+  .led-row input:focus,
+  .led-row textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  }
+  .library-edit-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 200px;
+    box-sizing: border-box;
+  }
+  .library-edit-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+  }
+  .led-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .led-actions button {
+    margin-top: 0;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  /* Stack label rows on narrow screens */
+  @media (max-width: 480px) {
+    .led-row { grid-template-columns: 1fr; }
+    .led-row > span { font-size: 12px; }
+  }
+
   /* ----- Conversation detail link/change-contact actions -------------- */
   /* Compact action row above an expanded conversation summary. */
   .conv-link-actions {
@@ -2141,10 +2249,11 @@
     <button class="tab" id="tab-history-btn" role="tab" aria-selected="false" data-tab="history">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9"/>
-        <path d="M12 7v5l3 2"/>
+        <!-- Stack of books / library spines -->
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
       </svg>
-      <span>History</span>
+      <span>Library</span>
     </button>
     <button class="tab admin-only" id="tab-admin-btn" role="tab" aria-selected="false" data-tab="admin">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -2361,9 +2470,9 @@
 
   <div class="tab-content" id="tab-history" role="tabpanel" aria-labelledby="tab-history-btn" hidden>
   <section class="panel">
-    <h2><span class="step">H</span>History<span class="chip" id="historyCountChip">0</span></h2>
+    <h2><span class="step">L</span>Library<span class="chip" id="historyCountChip">0</span></h2>
     <div class="subtabs">
-      <button class="subtab active" data-section="cards" id="sub-cards-btn">Cards</button>
+      <button class="subtab active" data-section="cards" id="sub-cards-btn">Contacts</button>
       <button class="subtab" data-section="conversations" id="sub-conv-btn">Conversations</button>
     </div>
     <input type="text" id="historySearch" class="search-box"
@@ -4816,14 +4925,238 @@ historyListEl.addEventListener("click", (e) => {
     return;
   }
 
+  // Library management buttons (Edit / Delete on cards and conversations).
+  const editCardBtn = e.target.closest(".library-edit-card-btn");
+  if (editCardBtn) {
+    e.stopPropagation();
+    enterCardEditMode(editCardBtn.dataset.cardId);
+    return;
+  }
+  const cancelCardBtn = e.target.closest(".library-edit-cancel-btn");
+  if (cancelCardBtn) {
+    e.stopPropagation();
+    exitEditMode(cancelCardBtn.dataset.cardId);
+    return;
+  }
+  const deleteCardBtn = e.target.closest(".library-delete-card-btn");
+  if (deleteCardBtn) {
+    e.stopPropagation();
+    deleteCardFromLibrary(deleteCardBtn.dataset.cardId);
+    return;
+  }
+  const editConvBtn = e.target.closest(".library-edit-conv-btn");
+  if (editConvBtn) {
+    e.stopPropagation();
+    enterConvEditMode(editConvBtn.dataset.convId);
+    return;
+  }
+  const cancelConvBtn = e.target.closest(".library-edit-cancel-conv-btn");
+  if (cancelConvBtn) {
+    e.stopPropagation();
+    exitEditMode(cancelConvBtn.dataset.convId);
+    return;
+  }
+  const deleteConvBtn = e.target.closest(".library-delete-conv-btn");
+  if (deleteConvBtn) {
+    e.stopPropagation();
+    deleteConvFromLibrary(deleteConvBtn.dataset.convId);
+    return;
+  }
+
   const item = e.target.closest(".history-item");
   if (!item) return;
   // Don't toggle if user clicked something interactive inside an expanded detail
-  if (e.target.closest("a, button")) return;
+  if (e.target.closest("a, button, input, textarea, label, form")) return;
   const id = item.dataset.id;
   historyState.expandedId = (historyState.expandedId === id) ? null : id;
   renderHistoryList();
 });
+
+// Form submit handlers (delegated so they survive innerHTML re-renders).
+historyListEl.addEventListener("submit", (e) => {
+  const cardForm = e.target.closest("form[id^='card-edit-form-']");
+  if (cardForm) {
+    e.preventDefault();
+    saveCardEdits(cardForm.dataset.cardId, cardForm);
+    return;
+  }
+  const convForm = e.target.closest("form[id^='conv-edit-form-']");
+  if (convForm) {
+    e.preventDefault();
+    saveConvTranscript(convForm.dataset.convId, convForm);
+    return;
+  }
+});
+
+// ---- Library management actions ------------------------------------------
+
+function enterCardEditMode(cardId) {
+  const detailEl = document.getElementById("hd-" + cardId);
+  const card = historyState.detailCache[cardId];
+  if (!detailEl || !card) return;
+  detailEl.innerHTML = renderCardEditForm(card);
+  // Focus the first input for keyboard-first reps.
+  const first = detailEl.querySelector('input[name="name"]');
+  if (first) first.focus();
+}
+
+function enterConvEditMode(convId) {
+  const detailEl = document.getElementById("hd-" + convId);
+  const conv = historyState.detailCache[convId];
+  if (!detailEl || !conv) return;
+  detailEl.innerHTML = renderConvEditForm(conv);
+  const ta = detailEl.querySelector('textarea[name="transcript"]');
+  if (ta) ta.focus();
+}
+
+/** Cancel an active edit; re-render the read-only detail from cache. */
+function exitEditMode(id) {
+  const detailEl = document.getElementById("hd-" + id);
+  const cached = historyState.detailCache[id];
+  if (!detailEl || !cached) return;
+  detailEl.innerHTML = historyState.section === "cards"
+    ? renderCardDetailInline(cached)
+    : renderConversationDetailInline(cached);
+  if (historyState.section === "cards" && cached.id) {
+    loadHeroPhoto(cached.id);
+    loadCardConversations(cached.id);
+  }
+}
+
+async function saveCardEdits(cardId, formEl) {
+  const f = formEl;
+  const v = (name) => (f.querySelector(`[name="${name}"]`).value || "").trim();
+  const list = (name) => v(name).split(",").map(s => s.trim()).filter(Boolean);
+  const body = {
+    extracted: {
+      name:     v("name")     || null,
+      title:    v("title")    || null,
+      company:  v("company")  || null,
+      emails:   list("emails"),
+      phones:   list("phones"),
+      website:  v("website")  || null,
+      address:  v("address")  || null,
+      linkedin: v("linkedin") || null,
+      notes:    v("notes")    || null,
+    },
+  };
+  const submit = f.querySelector('button[type="submit"]');
+  submit.disabled = true; submit.textContent = "Saving…";
+  try {
+    const r = await authFetch(`/cards/${cardId}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      throw new Error("Update failed: " + r.status + (detail ? " — " + detail : ""));
+    }
+    const updated = await r.json();
+    historyState.detailCache[cardId] = updated;
+    // Reflect new name/company in the collapsed-row summary too.
+    if (historyState.cards) {
+      const idx = historyState.cards.findIndex(x => x.id === cardId);
+      if (idx >= 0) {
+        historyState.cards[idx] = {
+          ...historyState.cards[idx],
+          name:    updated.extracted?.name    || null,
+          company: updated.extracted?.company || null,
+        };
+      }
+    }
+    renderHistoryList();
+  } catch (err) {
+    submit.disabled = false; submit.textContent = "Save";
+    setHistoryError(err.message || String(err));
+  }
+}
+
+async function saveConvTranscript(convId, formEl) {
+  const transcript = (formEl.querySelector('textarea[name="transcript"]').value || "").trim();
+  if (!transcript) {
+    setHistoryError("Transcript can't be empty.");
+    return;
+  }
+  const submit = formEl.querySelector('button[type="submit"]');
+  submit.disabled = true; submit.textContent = "Saving…";
+  try {
+    const r = await authFetch(`/conversations/${convId}`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ transcript }),
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      throw new Error("Update failed: " + r.status + (detail ? " — " + detail : ""));
+    }
+    // Backend kicked off a re-summary; drop the cached detail and refetch
+    // so the row picks up the fresh summary once it's ready.
+    delete historyState.detailCache[convId];
+    setHistoryError("");
+    await loadHistory();
+    // Poll the conversation until it's ready again so the detail refreshes
+    // without the rep having to click around.
+    waitForConvReadyAndRefresh(convId);
+  } catch (err) {
+    submit.disabled = false; submit.textContent = "Save & re-summarize";
+    setHistoryError(err.message || String(err));
+  }
+}
+
+/** Lightweight follow-up poll after a transcript edit — just keeps the
+ *  detail cache fresh as the new summary lands in the background. */
+async function waitForConvReadyAndRefresh(convId) {
+  for (let i = 0; i < 60; i++) {
+    await sleep(2000);
+    try {
+      const r = await authFetch("/conversations/" + convId);
+      if (!r.ok) continue;
+      const data = await r.json();
+      historyState.detailCache[convId] = data;
+      if (data.status === "ready" || data.status === "error") {
+        // Re-render if this conversation is still expanded.
+        if (historyState.expandedId === convId) {
+          const detailEl = document.getElementById("hd-" + convId);
+          if (detailEl) detailEl.innerHTML = renderConversationDetailInline(data);
+        }
+        return;
+      }
+    } catch (_) { /* keep polling */ }
+  }
+}
+
+async function deleteCardFromLibrary(cardId) {
+  const card = historyState.detailCache[cardId] || {};
+  const name = card.extracted?.name || "this contact";
+  const ok = window.confirm(
+    `Delete ${name}? Linked conversations stay in your library but will become unlinked. This can't be undone.`
+  );
+  if (!ok) return;
+  try {
+    const r = await authFetch(`/cards/${cardId}`, { method: "DELETE" });
+    if (!r.ok) throw new Error("Delete failed: " + r.status);
+    delete historyState.detailCache[cardId];
+    historyState.expandedId = null;
+    await loadHistory();
+  } catch (err) {
+    setHistoryError(err.message || String(err));
+  }
+}
+
+async function deleteConvFromLibrary(convId) {
+  const ok = window.confirm("Delete this conversation, its audio, and its PDF? This can't be undone.");
+  if (!ok) return;
+  try {
+    const r = await authFetch(`/conversations/${convId}`, { method: "DELETE" });
+    if (!r.ok) throw new Error("Delete failed: " + r.status);
+    delete historyState.detailCache[convId];
+    historyState.expandedId = null;
+    await loadHistory();
+  } catch (err) {
+    setHistoryError(err.message || String(err));
+  }
+}
 
 /** Open a modal that lets the rep search through their cards and pick one
  *  to attach to a conversation (or unlink an existing attachment). */
@@ -4987,11 +5320,11 @@ async function loadAndRenderDetail(id) {
   }
 }
 
-/** History tab — expanded card row uses the same Level-C renderer as the
+/** Library tab — expanded card row uses the same Level-C renderer as the
  *  live result panel, so look-and-feel is identical. The hero photo is
  *  loaded async after innerHTML lands (see loadAndRenderDetail below). */
 function renderCardDetailInline(c) {
-  return renderCardResultHtml(c);
+  return renderCardResultHtml(c) + renderCardManageActions(c);
 }
 
 function renderConversationDetailInline(c) {
@@ -5011,7 +5344,86 @@ function renderConversationDetailInline(c) {
       setTimeout(() => loadHeroPhoto(card.id), 0);
     }
   }
-  return prefix + renderConvLinkActions(c) + renderConversationSummaryHtml(c);
+  return prefix
+       + renderConvLinkActions(c)
+       + renderConversationSummaryHtml(c)
+       + renderConvManageActions(c);
+}
+
+/** Edit-fields and Delete row at the bottom of an expanded card detail.
+ *  Clicking Edit replaces the panel with renderCardEditForm; Delete prompts
+ *  for confirmation and DELETEs the row. */
+function renderCardManageActions(c) {
+  return `<div class="library-actions">
+    <button type="button" class="secondary library-edit-card-btn"
+            data-card-id="${escapeHtml(c.id)}">Edit fields</button>
+    <button type="button" class="danger library-delete-card-btn"
+            data-card-id="${escapeHtml(c.id)}">Delete</button>
+  </div>`;
+}
+
+function renderConvManageActions(c) {
+  return `<div class="library-actions">
+    <button type="button" class="secondary library-edit-conv-btn"
+            data-conv-id="${escapeHtml(c.id)}">Edit transcript</button>
+    <button type="button" class="danger library-delete-conv-btn"
+            data-conv-id="${escapeHtml(c.id)}">Delete</button>
+  </div>`;
+}
+
+/** Inline form for editing a card's extracted fields. Replaces the
+ *  detail innerHTML when the rep clicks "Edit fields". */
+function renderCardEditForm(c) {
+  const ex = c.extracted || {};
+  const v = (s) => escapeHtml(s == null ? "" : String(s));
+  const list = (a) => escapeHtml((a || []).join(", "));
+  return `<div class="library-edit-shell">
+    <h3 class="library-edit-title">Edit contact fields</h3>
+    <p class="library-edit-hint">Updates the brief PDF too. Doesn't re-run web research.</p>
+    <form id="card-edit-form-${escapeHtml(c.id)}" class="library-edit-form" data-card-id="${escapeHtml(c.id)}" novalidate>
+      <label class="led-row"><span>Name</span>
+        <input type="text" name="name" value="${v(ex.name)}" maxlength="200"/></label>
+      <label class="led-row"><span>Title</span>
+        <input type="text" name="title" value="${v(ex.title)}" maxlength="200"/></label>
+      <label class="led-row"><span>Company</span>
+        <input type="text" name="company" value="${v(ex.company)}" maxlength="200"/></label>
+      <label class="led-row"><span>Emails</span>
+        <input type="text" name="emails" value="${list(ex.emails)}" placeholder="comma-separated"/></label>
+      <label class="led-row"><span>Phones</span>
+        <input type="text" name="phones" value="${list(ex.phones)}" placeholder="comma-separated"/></label>
+      <label class="led-row"><span>Website</span>
+        <input type="text" name="website" value="${v(ex.website)}"/></label>
+      <label class="led-row"><span>Address</span>
+        <input type="text" name="address" value="${v(ex.address)}"/></label>
+      <label class="led-row"><span>LinkedIn</span>
+        <input type="text" name="linkedin" value="${v(ex.linkedin)}"/></label>
+      <label class="led-row"><span>Notes</span>
+        <textarea name="notes" rows="3">${v(ex.notes)}</textarea></label>
+      <div class="led-actions">
+        <button type="button" class="secondary library-edit-cancel-btn"
+                data-card-id="${escapeHtml(c.id)}">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>`;
+}
+
+/** Inline form for editing a conversation transcript. Save kicks off a
+ *  re-summarize on the backend; the frontend reloads + re-renders. */
+function renderConvEditForm(c) {
+  return `<div class="library-edit-shell">
+    <h3 class="library-edit-title">Edit transcript</h3>
+    <p class="library-edit-hint">Saving will run a fresh summary &amp; follow-up email from Claude (a few seconds).</p>
+    <form id="conv-edit-form-${escapeHtml(c.id)}" class="library-edit-form" data-conv-id="${escapeHtml(c.id)}" novalidate>
+      <textarea name="transcript" rows="14" class="library-edit-textarea" required
+        placeholder="Transcript text...">${escapeHtml(c.transcript || "")}</textarea>
+      <div class="led-actions">
+        <button type="button" class="secondary library-edit-cancel-conv-btn"
+                data-conv-id="${escapeHtml(c.id)}">Cancel</button>
+        <button type="submit">Save &amp; re-summarize</button>
+      </div>
+    </form>
+  </div>`;
 }
 
 /** Inline link/change-contact action for an expanded conversation row.

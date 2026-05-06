@@ -313,10 +313,14 @@ def promote_to_target(source_id: str, target_id: str) -> bool:
 def delete_card(card_id: str) -> bool:
     """Delete a card row and its on-disk PDF / photo (if not shared).
 
-    Photo files may now be shared between the source and target after a
-    promote_to_target call (target's photo_path got reassigned to source's
-    file). Before unlinking the photo, we check no other row still points
-    to it. The PDF is always card-specific so it's safe to drop.
+    Linked conversations are *orphaned* (their card_id is set to NULL)
+    rather than cascade-deleted — the rep's conversation history with
+    a contact is still useful even after the contact profile is removed,
+    and the user can re-link them to another card if they want.
+
+    Photo files may be shared between rows after a promote_to_target call,
+    so we only unlink the file when no surviving row points to it. The PDF
+    is always card-id-named so it's safe to drop unconditionally.
     """
     with _lock, _connect() as conn:
         row = conn.execute(
@@ -325,6 +329,11 @@ def delete_card(card_id: str) -> bool:
         if row is None:
             return False
         photo_path = row["photo_path"]
+        # Orphan linked conversations before dropping the parent row.
+        conn.execute(
+            "UPDATE conversations SET card_id = NULL WHERE card_id = ?",
+            (card_id,),
+        )
         conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
         # Only unlink the photo if no surviving row references it.
         if photo_path:
@@ -341,6 +350,34 @@ def delete_card(card_id: str) -> bool:
     # PDFs live under report_dir() and are always card-id-named.
     try:
         (REPORT_DIR / f"{card_id}.pdf").unlink(missing_ok=True)
+    except OSError:
+        pass
+    return True
+
+
+def delete_conversation(conv_id: str) -> bool:
+    """Delete a conversation row and its on-disk audio + PDF.
+
+    Returns True iff the row existed and was removed. Audio and PDF
+    cleanup failures are swallowed — losing them is annoying, but the
+    user requested a delete and the row is gone.
+    """
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT audio_path FROM conversations WHERE id = ?", (conv_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        audio_path = row["audio_path"] if "audio_path" in row.keys() else None
+        conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+        conn.commit()
+    if audio_path:
+        try:
+            Path(audio_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+    try:
+        (REPORT_DIR / f"conv-{conv_id}.pdf").unlink(missing_ok=True)
     except OSError:
         pass
     return True
