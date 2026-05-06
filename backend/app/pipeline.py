@@ -8,6 +8,7 @@ import time
 import traceback
 
 from . import storage
+from .company_profile import get_or_fetch_company_profile
 from .extraction import extract_card
 from .pdf_report import render_report
 from .research import research_company
@@ -34,7 +35,24 @@ def _research_and_render(card_id: str, t0: float) -> None:
     log.info("[%s] step 2/3: research", card_id)
     record = storage.get_card(card_id)
     assert record is not None and record.extracted is not None
-    research, research_cost = research_company(record.extracted)
+
+    # Look up the rep's seller-company so the AI can frame pain points and
+    # opening questions to the seller's go-to-market. Lazy fetch + cache —
+    # first card from a new seller-company eats ~5-8s for the web search;
+    # everything after hits the cache for free.
+    seller_company = None
+    seller_context = None
+    if record.user_id:
+        rep = storage.get_user_by_id(record.user_id)
+        if rep and rep.company:
+            seller_company = rep.company
+            seller_context = get_or_fetch_company_profile(rep.company)
+
+    research, research_cost = research_company(
+        record.extracted,
+        company_context=seller_context,
+        seller_company=seller_company,
+    )
     storage.update_research(card_id, research)
     storage.add_card_cost(card_id, research_cost)
     log.info(

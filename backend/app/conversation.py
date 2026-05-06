@@ -20,8 +20,8 @@ log = logging.getLogger("conference-ai.conversation")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 
 DEFAULT_COMPANY_CONTEXT = (
-    "d-volt sells voltage regulation and power conditioning hardware to "
-    "industrial and commercial customers."
+    "(No background context for the seller is available. Tailor the "
+    "follow-up email and next steps to what was actually discussed.)"
 )
 
 
@@ -118,10 +118,14 @@ def _card_context_block(card: Optional[CardRecord]) -> str:
     return "\n".join(lines) if lines else "(card linked but empty)"
 
 
-def _build_prompt(transcript: str, card: Optional[CardRecord]) -> str:
-    company_context = os.getenv("COMPANY_CONTEXT", DEFAULT_COMPANY_CONTEXT)
+def _build_prompt(
+    transcript: str,
+    card: Optional[CardRecord],
+    seller_company: str,
+    company_context: str,
+) -> str:
     return f"""\
-Your seller is at d-volt. Their context:
+Your seller is at {seller_company}. Their context:
 
 {company_context}
 
@@ -146,6 +150,8 @@ Rules:
 - For `next_steps`, be specific and actionable: include who, what, by when.
 - The follow-up email should reference at least two specific points from
   the conversation so it feels personal.
+- Sign the follow-up email as if it's from someone at {seller_company}.
+  Don't fabricate a specific person's name.
 
 Customer-context rules (apply when the customer context block above is not
 empty):
@@ -153,11 +159,10 @@ empty):
   and reference their company by name when those values are present in the
   customer context. Do not use generic placeholders like "Hi there" if a
   name is available.
-- Tailor the email to the company category. A pitch to a Utility reads
-  differently from one to an EPC, a Distributor, an End User, or a Vendor.
-  Mention reliability/grid impact for utilities; deployment timelines for
-  EPCs; margins/inventory for distributors; downtime/cost-per-hour for end
-  users.
+- Tailor the email to the company category and the seller's go-to-market.
+  Pitch language for a customer differs from a channel partner, an
+  integrator, a distributor, or a competitor — match what fits the
+  seller's context above and the customer category.
 - If the customer said anything that matches a pre-call pain point, call
   that connection out explicitly in either `next_steps` or the email body
   — it shows the seller did their homework and earns trust.
@@ -165,12 +170,19 @@ empty):
 
 
 def summarize_conversation(
-    transcript: str, card: Optional[CardRecord] = None
+    transcript: str,
+    card: Optional[CardRecord] = None,
+    seller_company: Optional[str] = None,
+    company_context: Optional[str] = None,
 ):
     """Summarize a sales conversation.
 
     Returns ``(ConversationSummary, cost_usd)``. Falls back to a one-line
     error message in the summary if Claude fails.
+
+    `seller_company` and `company_context` describe WHO THE SELLER IS so
+    the follow-up email can be tailored. Both are looked up by the
+    conversation pipeline from the rep's User row before this is called.
     """
     if not transcript or not transcript.strip():
         return ConversationSummary(
@@ -178,7 +190,11 @@ def summarize_conversation(
         ), 0.0
 
     client = make_client(timeout=120.0)
-    prompt = _build_prompt(transcript, card)
+    seller_company = (seller_company or "the seller").strip() or "the seller"
+    company_context = company_context or os.getenv(
+        "COMPANY_CONTEXT", DEFAULT_COMPANY_CONTEXT,
+    )
+    prompt = _build_prompt(transcript, card, seller_company, company_context)
 
     try:
         final = stream_to_terminal(

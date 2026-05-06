@@ -27,6 +27,7 @@ from .auth import (
     require_manager,
     verify_password,
 )
+from .company_profile import get_or_fetch_company_profile
 from .conversation import summarize_conversation
 from .models import (
     AuthResponse,
@@ -387,8 +388,23 @@ def _summarize_and_render(conv_id: str) -> None:
     assert rec is not None
     card = storage.get_card(rec.card_id) if rec.card_id else None
 
+    # Resolve the rep's seller-company so the follow-up email can be signed
+    # off as the right firm and tailored to their go-to-market.
+    seller_company = None
+    seller_context = None
+    if rec.user_id:
+        rep = storage.get_user_by_id(rec.user_id)
+        if rep and rep.company:
+            seller_company = rep.company
+            seller_context = get_or_fetch_company_profile(rep.company)
+
     storage.update_conversation_status(conv_id, "summarizing")
-    summary, summary_cost = summarize_conversation(rec.transcript or "", card=card)
+    summary, summary_cost = summarize_conversation(
+        rec.transcript or "",
+        card=card,
+        seller_company=seller_company,
+        company_context=seller_context,
+    )
     storage.update_conversation_summary(conv_id, summary)
     storage.add_conversation_cost(conv_id, summary_cost)
     log.info("conv %s summary cost: $%.4f", conv_id, summary_cost)

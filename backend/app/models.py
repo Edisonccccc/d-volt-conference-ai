@@ -50,8 +50,9 @@ class CompanyResearch(BaseModel):
     company_category: Optional[str] = Field(
         None,
         description=(
-            "Where the company sits in d-volt's market. One of: Utility, "
-            "Vendor, EPC, Sales Representatives, Distributors, End Users, Other."
+            "Short label describing where this company sits relative to the "
+            "seller's go-to-market — e.g. Customer, Channel Partner, "
+            "Reseller, Distributor, Integrator, Supplier, Competitor, Other."
         ),
     )
     category_rationale: Optional[str] = Field(
@@ -69,7 +70,7 @@ class CompanyResearch(BaseModel):
     )
     pain_points: List[str] = Field(
         default_factory=list,
-        description="Likely pain points framed against d-volt's offering.",
+        description="Likely pain points framed against the seller's offering.",
     )
     opening_questions: List[str] = Field(
         default_factory=list,

@@ -28,11 +28,12 @@ from .models import CompanyResearch, ExtractedCard
 log = logging.getLogger("conference-ai.research")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 
+# Last-resort fallback when no company_context blob is available (e.g.
+# the rep's seller-profile fetch failed and there's no env override).
+# Kept generic enough to work for any seller; the prompt still flows.
 DEFAULT_COMPANY_CONTEXT = (
-    "d-volt sells voltage regulation and power conditioning hardware to "
-    "industrial and commercial customers. Frame pain points and openings "
-    "around power quality, energy savings, equipment reliability, and "
-    "downtime reduction."
+    "(No background context for the seller is available. Rely on the "
+    "customer card data alone and keep recommendations general.)"
 )
 
 # Cache_control caches the `tools` block + system prefix across calls.
@@ -70,14 +71,14 @@ SUBMIT_BASICS = {
             },
             "company_category": {
                 "type": "string",
-                "enum": [
-                    "Utility", "Vendor", "EPC", "Sales Representatives",
-                    "Distributors", "End Users", "Other",
-                ],
                 "description": (
-                    "Classification relative to d-volt's market: Utility, "
-                    "Vendor, EPC, Sales Representatives, Distributors, End "
-                    "Users, or Other (e.g. competitor)."
+                    "A short label describing where this company sits "
+                    "relative to the seller's go-to-market — pick whatever "
+                    "fits the seller's industry and channels. Common "
+                    "examples across industries: 'Customer', 'Channel "
+                    "Partner', 'Reseller', 'Distributor', 'System "
+                    "Integrator', 'Supplier', 'Competitor', 'Other'. "
+                    "Keep it 1-3 words."
                 ),
             },
             "category_rationale": {
@@ -198,9 +199,11 @@ def _contact_lines(card: ExtractedCard) -> str:
 
 # ---- Sub-call prompts ----------------------------------------------------
 
-def _basics_prompt(card: ExtractedCard, company_context: str) -> str:
+def _basics_prompt(
+    card: ExtractedCard, company_context: str, seller_company: str,
+) -> str:
     return f"""\
-Your seller is at d-volt. Their context:
+Your seller is at {seller_company}. Their context:
 {company_context}
 
 Contact info from a business card:
@@ -209,13 +212,15 @@ Contact info from a business card:
 GOAL: Produce a focused company brief. Use up to 3 web searches to find:
 - The company's official website (verify, don't guess).
 - What the company does (one-liner, industry, size if public, products).
-- Anything that hints at power-quality, reliability, or energy challenges.
+- Any signals that hint at problems the seller's offering would solve.
 
 Then call `submit_company_basics` exactly once with:
-- `company_category` chosen from the enum (use 'Other' only if none fit;
-  for 'Other', state the specific reason in `category_rationale`).
-- `pain_points`: likely concerns framed against d-volt's offering, tied to
-  something concrete you observed.
+- `company_category`: a short 1-3 word label fitting the seller's go-to-market
+  (Customer / Channel Partner / Reseller / Distributor / Integrator /
+  Supplier / Competitor / Other — or whatever's idiomatic for the seller's
+  industry). State the reasoning in `category_rationale`.
+- `pain_points`: likely concerns framed against the seller's offering,
+  tied to something concrete you observed in the research.
 - `opening_questions`: exactly THREE short questions specific to what you
   found, not generic.
 """
@@ -302,12 +307,14 @@ def _call_with_search(
         return {}, 0.0
 
 
-def _research_no_search(client, card: ExtractedCard, company_context: str):
+def _research_no_search(
+    client, card: ExtractedCard, company_context: str, seller_company: str,
+):
     """Fallback when web_search is unavailable (or the parallel calls all failed).
     Returns ``(CompanyResearch, cost_usd)``. No search; uses the model's general
     knowledge alone."""
     prompt = (
-        _basics_prompt(card, company_context)
+        _basics_prompt(card, company_context, seller_company)
         + "\n\nIMPORTANT: web_search is unavailable for this run. Produce "
         "the brief from the contact info alone. Qualify guesses with "
         "'Likely…' or 'Possibly…'. Three opening questions are still required."
@@ -370,12 +377,18 @@ def _merge_into_research(
 def research_company(
     card: ExtractedCard,
     company_context: Optional[str] = None,
+    seller_company: Optional[str] = None,
 ):
     """Run the research agent (3-way fan-out) and return ``(CompanyResearch, cost_usd)``.
 
     Three concurrent web_search calls (basics / news / contact) collapse the
     sequential ~40s wall time into ~max(call) ≈ 12-15s. Cost is roughly
     the same as the old single-call path.
+
+    `seller_company` and `company_context` together describe WHO THE SELLER
+    IS so the AI can frame pain points and opening questions to fit the
+    seller's go-to-market. Both are looked up by the pipeline from the
+    card's owning user before this function is called.
     """
     if not card.company:
         return CompanyResearch(
@@ -386,14 +399,18 @@ def research_company(
     company_context = company_context or os.getenv(
         "COMPANY_CONTEXT", DEFAULT_COMPANY_CONTEXT,
     )
+    seller_company = (seller_company or "the seller").strip() or "the seller"
 
-    log.info("research: starting 3-way fan-out for company=%r", card.company)
+    log.info(
+        "research: starting 3-way fan-out for company=%r (seller=%r)",
+        card.company, seller_company,
+    )
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         f_basics  = ex.submit(
             _call_with_search, client,
             label="research-basics",
-            prompt=_basics_prompt(card, company_context),
+            prompt=_basics_prompt(card, company_context, seller_company),
             max_uses=3,
             submit_tool=SUBMIT_BASICS,
             tool_name="submit_company_basics",
@@ -426,7 +443,9 @@ def research_company(
     if not merged.one_liner:
         log.warning("all three parallel research calls returned empty; "
                     "running search-less fallback")
-        fb_research, fb_cost = _research_no_search(client, card, company_context)
+        fb_research, fb_cost = _research_no_search(
+            client, card, company_context, seller_company,
+        )
         return fb_research, total_cost + fb_cost
 
     log.info(

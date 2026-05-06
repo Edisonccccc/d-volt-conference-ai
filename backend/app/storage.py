@@ -135,6 +135,22 @@ def init_db() -> None:
         if not _has_col("cards", "duplicate_of"):
             conn.execute("ALTER TABLE cards ADD COLUMN duplicate_of TEXT")
 
+        # Per-seller-company context cache. The rep's company is web-searched
+        # on first use and the resulting paragraph is fed into research /
+        # conversation prompts so the AI has the seller's go-to-market loaded.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_profiles (
+                company TEXT PRIMARY KEY COLLATE NOCASE,
+                context_blob TEXT NOT NULL,
+                sources TEXT,
+                cost_usd REAL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
 
@@ -670,6 +686,86 @@ def delete_user(user_id: str) -> bool:
 def count_users() -> int:
     with _lock, _connect() as conn:
         return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# Company profiles (per-seller AI context)
+# ---------------------------------------------------------------------------
+
+
+def get_company_profile(company: str) -> Optional[dict]:
+    """Return the cached profile for a seller-company, or None.
+
+    Returned dict shape: {company, context_blob, sources, cost_usd,
+    created_at, updated_at}. Sources is a list (parsed from JSON).
+    Lookup is case-insensitive (the table column uses COLLATE NOCASE).
+    """
+    if not company or not company.strip():
+        return None
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM company_profiles WHERE company = ?",
+            (company.strip(),),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        sources = json.loads(row["sources"]) if row["sources"] else []
+    except (TypeError, ValueError):
+        sources = []
+    return {
+        "company":      row["company"],
+        "context_blob": row["context_blob"],
+        "sources":      sources,
+        "cost_usd":     row["cost_usd"] or 0.0,
+        "created_at":   row["created_at"],
+        "updated_at":   row["updated_at"],
+    }
+
+
+def set_company_profile(
+    company: str, context_blob: str, sources: Optional[list] = None,
+    cost_usd: float = 0.0,
+) -> None:
+    """Insert or update the profile for a seller-company.
+
+    cost_usd is ADDED to the existing cost (so refreshes accumulate spend
+    visibility), and updated_at is bumped to now. created_at is set on
+    first insert and preserved on update.
+    """
+    if not company or not company.strip():
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    sources_json = json.dumps(list(sources or []))
+    with _lock, _connect() as conn:
+        # SQLite ON CONFLICT works because `company` is the primary key.
+        conn.execute(
+            "INSERT INTO company_profiles (company, context_blob, sources, "
+            "                              cost_usd, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(company) DO UPDATE SET "
+            "  context_blob = excluded.context_blob, "
+            "  sources      = excluded.sources, "
+            "  cost_usd     = COALESCE(company_profiles.cost_usd, 0) "
+            "                 + COALESCE(excluded.cost_usd, 0), "
+            "  updated_at   = excluded.updated_at",
+            (company.strip(), context_blob, sources_json,
+             float(cost_usd or 0), now, now),
+        )
+        conn.commit()
+
+
+def delete_company_profile(company: str) -> bool:
+    """Drop a profile so the next call refetches. Used by manual refresh."""
+    if not company or not company.strip():
+        return False
+    with _lock, _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM company_profiles WHERE company = ?",
+            (company.strip(),),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 # ---------------------------------------------------------------------------
