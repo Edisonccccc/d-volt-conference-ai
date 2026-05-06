@@ -1441,8 +1441,12 @@
     justify-content: center;
   }
   .tab {
-    background: transparent;
-    color: var(--muted);
+    /* Inactive tabs read as clearly clickable: subtle pill background +
+       full-ink text dimmed via opacity, so they're discoverable without
+       fighting the active brand-gradient state. */
+    background: var(--surface-2);
+    color: var(--ink);
+    opacity: 0.72;
     padding: 9px 18px;
     border-radius: var(--radius-pill);
     width: auto;
@@ -1451,18 +1455,26 @@
     font-size: 14px;
     font-weight: 600;
     box-shadow: none;
-    border: 0;
+    border: 1px solid transparent;
     display: inline-flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    transition: background var(--transition), color var(--transition);
+    transition: background var(--transition), color var(--transition),
+                opacity var(--transition), border-color var(--transition);
     min-height: 0;
   }
-  .tab:hover:not(.active) { background: var(--surface-2); color: var(--ink); }
+  .tab:hover:not(.active) {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--ink);
+    opacity: 1;
+  }
   .tab.active {
     background: var(--brand-grad);
     color: white;
+    border-color: transparent;
+    opacity: 1;
     box-shadow: 0 1px 4px rgba(124, 58, 237, 0.25);
   }
   .tab .ico { width: 16px; height: 16px; }
@@ -2547,9 +2559,14 @@
     <button class="tab" id="tab-history-btn" role="tab" aria-selected="false" data-tab="history">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <!-- Stack of books / library spines -->
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        <!-- Stack of three books with little title marks: clearly a library
+             rather than a single book. -->
+        <rect x="3" y="4"    width="18" height="4.5" rx="1"/>
+        <rect x="3" y="9.75" width="18" height="4.5" rx="1"/>
+        <rect x="3" y="15.5" width="18" height="4.5" rx="1"/>
+        <line x1="6" y1="6.25"  x2="8" y2="6.25"/>
+        <line x1="6" y1="12"    x2="8" y2="12"/>
+        <line x1="6" y1="17.75" x2="8" y2="17.75"/>
       </svg>
       <span>Library</span>
     </button>
