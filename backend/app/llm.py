@@ -21,12 +21,10 @@ log = logging.getLogger("conference-ai.llm")
 def make_client(
     *, max_retries: int = 1, timeout: float = 120.0
 ) -> Anthropic:
-    """Build an Anthropic client tuned for fail-fast debugging.
-
-    The default SDK retries up to 2 times with backoff, which can hide a
-    400-class error for 90+ seconds. We keep one retry for transient
-    network blips but no more.
-    """
+    """Build an Anthropic client. Default is fail-fast (1 retry) so 400-class
+    errors surface quickly during debugging; callers running batch jobs
+    against rate-limited tiers should pass a higher ``max_retries`` so the
+    SDK can ride out 429s with its built-in exponential backoff."""
     return Anthropic(max_retries=max_retries, timeout=timeout)
 
 

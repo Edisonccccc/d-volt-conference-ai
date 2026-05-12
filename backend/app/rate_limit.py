@@ -130,11 +130,23 @@ def attendee_bucket() -> TokenBucket:
     if _attendee_bucket is None:
         with _attendee_bucket_lock:
             if _attendee_bucket is None:
-                itpm = int(os.getenv("ANTHROPIC_ITPM_LIMIT", "500000"))
-                otpm = int(os.getenv("ANTHROPIC_OTPM_LIMIT",  "80000"))
-                _attendee_bucket = TokenBucket(itpm, otpm, name="attendee")
+                # Defaults match Anthropic's Tier-1 limits for claude-sonnet-4-6
+                # (30K input / 8K output tokens per minute) so out-of-the-box
+                # the bucket throttles correctly. Bump these env vars to match
+                # your actual tier (Tier 2 = 80K/16K, Tier 4 = 400K/80K, etc.).
+                itpm = int(os.getenv("ANTHROPIC_ITPM_LIMIT", "30000"))
+                otpm = int(os.getenv("ANTHROPIC_OTPM_LIMIT",  "8000"))
+                # Apply a safety margin (default 80%) so we don't push right
+                # up to the API edge — the SDK has its own retries but a
+                # margin keeps the bucket from racing other in-flight calls.
+                margin = float(os.getenv("ANTHROPIC_RATE_LIMIT_MARGIN", "0.85"))
+                margin = max(0.5, min(margin, 1.0))
+                itpm_eff = int(itpm * margin)
+                otpm_eff = int(otpm * margin)
+                _attendee_bucket = TokenBucket(itpm_eff, otpm_eff, name="attendee")
                 log.info(
-                    "rate-limit[attendee]: bucket initialized (ITPM=%d, OTPM=%d)",
-                    itpm, otpm,
+                    "rate-limit[attendee]: bucket initialized "
+                    "(ITPM=%d, OTPM=%d; raw tier %d/%d, margin %.2f)",
+                    itpm_eff, otpm_eff, itpm, otpm, margin,
                 )
     return _attendee_bucket

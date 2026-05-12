@@ -35,17 +35,25 @@ from .rate_limit import attendee_bucket
 log = logging.getLogger("conference-ai.attendee-scoring")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 
-# Concurrency cap. The token bucket protects against rate-limit blowups,
-# so we can keep parallelism reasonably high — bucket will throttle when
-# needed. Default 5; tune via ATTENDEE_SCORING_PARALLELISM env var.
-SCORING_PARALLELISM = int(os.getenv("ATTENDEE_SCORING_PARALLELISM", "5"))
+# Concurrency cap. Default 1 because the per-call input is dominated by
+# web_search tool results (each search bakes ~5-10K tokens of search
+# excerpts back into the conversation, so 2 searches per attendee can
+# push input to 20-25K). On Tier-1 (30K ITPM) two concurrent calls
+# would burst past the limit. Reps with higher tiers should bump this.
+SCORING_PARALLELISM = int(os.getenv("ATTENDEE_SCORING_PARALLELISM", "1"))
 
 # Per-call token estimates used to reserve budget BEFORE the call.
-# Real numbers from observed runs: ~5K input (prompt + web search results)
-# and ~600 output. We bake in some headroom on input so the reservation
-# isn't too optimistic — actual ITPM consumption is the bigger constraint.
-EST_INPUT_TOKENS  = int(os.getenv("ATTENDEE_EST_INPUT_TOKENS",  "6000"))
-EST_OUTPUT_TOKENS = int(os.getenv("ATTENDEE_EST_OUTPUT_TOKENS", "1000"))
+# Observed: web_search tool results pull ~5-10K of search excerpts back
+# into each tool turn. With 2 search calls + the system + user prompt,
+# realistic input is 18-25K. We reserve the high end so the bucket
+# doesn't under-count and the SDK doesn't see a 429.
+EST_INPUT_TOKENS  = int(os.getenv("ATTENDEE_EST_INPUT_TOKENS",  "22000"))
+EST_OUTPUT_TOKENS = int(os.getenv("ATTENDEE_EST_OUTPUT_TOKENS",  "1200"))
+
+# Max number of web searches per attendee. Reducing this from 3 → 2 cuts
+# the worst-case input by ~5-10K and keeps each call comfortably under
+# the per-minute window even on Tier-1.
+ATTENDEE_WEB_SEARCH_MAX = int(os.getenv("ATTENDEE_WEB_SEARCH_MAX", "2"))
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +309,10 @@ def score_attendee(
     workers don't burst past the Anthropic ITPM/OTPM caps. Raises on API
     failure so the caller can mark the row as 'error'.
     """
-    client = make_client(timeout=90.0)
+    # max_retries=8 lets the SDK ride out 429s with its built-in
+    # exponential backoff if our token bucket somehow under-reserves.
+    # The bucket is the primary defense; SDK retries are the safety net.
+    client = make_client(max_retries=8, timeout=90.0)
     label = f"score-{(last_name or 'x').lower()[:8]}"
 
     # Proactive rate-limit gate. Blocks until both ITPM + OTPM windows
@@ -319,7 +330,7 @@ def score_attendee(
             model=MODEL,
             max_tokens=1024,
             system=SYSTEM,
-            tools=[_ws_tool(3), SUBMIT_SCORE],
+            tools=[_ws_tool(ATTENDEE_WEB_SEARCH_MAX), SUBMIT_SCORE],
             tool_choice={"type": "auto"},
             messages=[{
                 "role": "user",
