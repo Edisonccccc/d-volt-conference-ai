@@ -195,6 +195,61 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_card ON notes(card_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id)")
 
+        # ---- Conference planning (Plan tab) -------------------------------
+        # `conferences` is scoped to the seller-company so every rep at
+        # d-volt sees the same attendee list for IEEE PES T&D. Owner_user_id
+        # records who uploaded; deletion is still owner-or-manager-gated.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conferences (
+                id              TEXT PRIMARY KEY,
+                name            TEXT NOT NULL,
+                start_date      TEXT,
+                end_date        TEXT,
+                seller_company  TEXT,
+                owner_user_id   TEXT,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conferences_seller "
+            "ON conferences(seller_company)"
+        )
+
+        # An attendee is a row from the rep's uploaded xlsx, scored by AI
+        # for "should I prioritize meeting this person?". `score` lives on
+        # a 1-4 scale (1=don't meet, 4=must meet). `raw_row_json` keeps
+        # the original xlsx columns we didn't map, so nothing is lost.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS attendees (
+                id              TEXT PRIMARY KEY,
+                conference_id   TEXT NOT NULL,
+                first_name      TEXT,
+                last_name       TEXT,
+                company         TEXT,
+                raw_row_json    TEXT,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                company_brief   TEXT,
+                rep_brief       TEXT,
+                score           INTEGER,
+                score_reason    TEXT,
+                sources         TEXT,
+                cost_usd        REAL,
+                error           TEXT,
+                promoted_card_id TEXT,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_attendees_conf "
+            "ON attendees(conference_id)"
+        )
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_user  ON conversations(user_id)")
 
@@ -1056,6 +1111,246 @@ def delete_note(note_id: str, user_id: Optional[str] = None) -> bool:
                 "DELETE FROM notes WHERE id = ? AND user_id = ?",
                 (note_id, user_id),
             )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Conferences + Attendees (Plan tab)
+# ---------------------------------------------------------------------------
+
+
+def _row_to_conference(row: sqlite3.Row) -> "Conference":
+    from .models import Conference
+    return Conference(
+        id=row["id"],
+        name=row["name"],
+        start_date=row["start_date"],
+        end_date=row["end_date"],
+        seller_company=row["seller_company"],
+        owner_user_id=row["owner_user_id"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _row_to_attendee(row: sqlite3.Row) -> "Attendee":
+    from .models import Attendee
+    try:
+        sources = json.loads(row["sources"]) if row["sources"] else []
+    except (TypeError, ValueError):
+        sources = []
+    try:
+        raw_row = json.loads(row["raw_row_json"]) if row["raw_row_json"] else {}
+    except (TypeError, ValueError):
+        raw_row = {}
+    return Attendee(
+        id=row["id"],
+        conference_id=row["conference_id"],
+        first_name=row["first_name"],
+        last_name=row["last_name"],
+        company=row["company"],
+        raw_row=raw_row,
+        status=row["status"],
+        company_brief=row["company_brief"],
+        rep_brief=row["rep_brief"],
+        score=row["score"],
+        score_reason=row["score_reason"],
+        sources=sources,
+        cost_usd=row["cost_usd"] or 0.0,
+        error=row["error"],
+        promoted_card_id=row["promoted_card_id"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def create_conference(
+    name: str,
+    *,
+    seller_company: Optional[str] = None,
+    owner_user_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> "Conference":
+    cid = uuid.uuid4().hex[:12]
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        conn.execute(
+            "INSERT INTO conferences (id, name, start_date, end_date, "
+            "                         seller_company, owner_user_id, "
+            "                         created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (cid, name.strip(), start_date, end_date,
+             (seller_company or "").strip() or None,
+             owner_user_id, now, now),
+        )
+        conn.commit()
+    from .models import Conference
+    return Conference(
+        id=cid, name=name.strip(),
+        start_date=start_date, end_date=end_date,
+        seller_company=(seller_company or "").strip() or None,
+        owner_user_id=owner_user_id,
+        created_at=now, updated_at=now,
+    )
+
+
+def list_conferences(
+    seller_company: Optional[str] = None,
+) -> List["Conference"]:
+    """Return all conferences for a seller-company (team-shared)."""
+    with _lock, _connect() as conn:
+        if seller_company is None:
+            rows = conn.execute(
+                "SELECT * FROM conferences ORDER BY created_at DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM conferences WHERE seller_company = ? COLLATE NOCASE "
+                "ORDER BY created_at DESC",
+                (seller_company.strip(),),
+            ).fetchall()
+    return [_row_to_conference(r) for r in rows]
+
+
+def get_conference(
+    conf_id: str, seller_company: Optional[str] = None,
+) -> Optional["Conference"]:
+    with _lock, _connect() as conn:
+        if seller_company is None:
+            row = conn.execute(
+                "SELECT * FROM conferences WHERE id = ?", (conf_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM conferences WHERE id = ? "
+                "AND seller_company = ? COLLATE NOCASE",
+                (conf_id, seller_company.strip()),
+            ).fetchone()
+    return _row_to_conference(row) if row else None
+
+
+def delete_conference(conf_id: str) -> bool:
+    """Drop the conference and cascade-delete its attendees."""
+    with _lock, _connect() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM conferences WHERE id = ?", (conf_id,),
+        ).fetchone()
+        if existing is None:
+            return False
+        conn.execute("DELETE FROM attendees WHERE conference_id = ?", (conf_id,))
+        conn.execute("DELETE FROM conferences WHERE id = ?", (conf_id,))
+        conn.commit()
+    return True
+
+
+def insert_attendees(
+    conf_id: str, rows: List[dict],
+) -> List[str]:
+    """Bulk-insert attendee rows. `rows` is a list of dicts with at least
+    `first_name`, `last_name`, `company` keys; any other keys are stored
+    in raw_row_json. Returns the list of new attendee ids."""
+    ids = []
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        for row in rows:
+            aid = uuid.uuid4().hex[:12]
+            ids.append(aid)
+            extras = {k: v for k, v in row.items()
+                      if k not in ("first_name", "last_name", "company")}
+            conn.execute(
+                "INSERT INTO attendees (id, conference_id, first_name, last_name, "
+                "                       company, raw_row_json, status, "
+                "                       created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+                (
+                    aid, conf_id,
+                    (row.get("first_name") or "").strip() or None,
+                    (row.get("last_name")  or "").strip() or None,
+                    (row.get("company")    or "").strip() or None,
+                    json.dumps(extras) if extras else None,
+                    now, now,
+                ),
+            )
+        conn.commit()
+    return ids
+
+
+def list_attendees(conf_id: str) -> List["Attendee"]:
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM attendees WHERE conference_id = ? "
+            "ORDER BY COALESCE(score, 0) DESC, last_name ASC",
+            (conf_id,),
+        ).fetchall()
+    return [_row_to_attendee(r) for r in rows]
+
+
+def list_pending_attendees(conf_id: str) -> List["Attendee"]:
+    with _lock, _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM attendees WHERE conference_id = ? AND status = 'pending'",
+            (conf_id,),
+        ).fetchall()
+    return [_row_to_attendee(r) for r in rows]
+
+
+def get_attendee(attendee_id: str) -> Optional["Attendee"]:
+    with _lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM attendees WHERE id = ?", (attendee_id,),
+        ).fetchone()
+    return _row_to_attendee(row) if row else None
+
+
+def update_attendee_status(
+    attendee_id: str, status: str, error: Optional[str] = None,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE attendees SET status = ?, error = ?, updated_at = ? "
+            "WHERE id = ?",
+            (status, error, now, attendee_id),
+        )
+        conn.commit()
+
+
+def update_attendee_score(
+    attendee_id: str,
+    *,
+    score: Optional[int],
+    score_reason: Optional[str],
+    company_brief: Optional[str],
+    rep_brief: Optional[str],
+    sources: Optional[list],
+    cost_usd: float,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        conn.execute(
+            "UPDATE attendees SET "
+            "  score = ?, score_reason = ?, "
+            "  company_brief = ?, rep_brief = ?, "
+            "  sources = ?, cost_usd = COALESCE(cost_usd, 0) + ?, "
+            "  status = 'scored', updated_at = ? "
+            "WHERE id = ?",
+            (score, score_reason, company_brief, rep_brief,
+             json.dumps(sources or []), float(cost_usd or 0), now,
+             attendee_id),
+        )
+        conn.commit()
+
+
+def mark_attendee_promoted(attendee_id: str, card_id: str) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        cur = conn.execute(
+            "UPDATE attendees SET promoted_card_id = ?, updated_at = ? "
+            "WHERE id = ?",
+            (card_id, now, attendee_id),
+        )
         conn.commit()
         return cur.rowcount > 0
 

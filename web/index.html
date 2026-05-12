@@ -1111,6 +1111,268 @@
     margin-bottom: 2px;
   }
 
+  /* ----- Plan tab — pre-conference attendee scoring ------------------ */
+  .plan-back-btn {
+    margin: 4px 0 12px;
+    padding: 6px 12px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    cursor: pointer;
+  }
+  .plan-back-btn:hover { color: var(--ink); border-color: var(--accent); }
+
+  /* Conference list rows */
+  .conf-row {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+  .conf-row:hover { border-color: var(--accent); box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.04)); }
+  .conf-row-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .conf-row-meta {
+    color: var(--muted);
+    font-size: 12px;
+    margin-top: 4px;
+  }
+
+  /* Conference detail header */
+  .plan-conf-header { margin: 6px 0 12px; }
+  .plan-conf-title {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: var(--ink);
+    letter-spacing: -0.012em;
+  }
+  .plan-conf-counts { color: var(--muted); font-size: 13px; }
+  .pcc-must  { color: var(--success); font-weight: 600; }
+  .pcc-good  { color: var(--summarizing); font-weight: 600; }
+  .pcc-skip  { color: var(--muted); font-weight: 600; }
+  .pcc-dont  { color: var(--err); font-weight: 600; }
+
+  .plan-upload-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .plan-upload-btn {
+    flex: 1;
+    min-width: 180px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius-input);
+    color: var(--accent);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: background var(--transition);
+  }
+  .plan-upload-btn:hover { background: rgba(124, 58, 237, 0.06); }
+  .plan-delete-btn {
+    margin: 0;
+    padding: 10px 14px;
+    border: 1px solid var(--err);
+    color: var(--err);
+    background: transparent;
+    border-radius: var(--radius-input);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .plan-delete-btn:hover { background: var(--err-soft); }
+
+  .plan-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--summarizing-soft);
+    color: var(--summarizing);
+    border-radius: var(--radius-input);
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .plan-progress .progressbar { flex: 1; margin: 0; }
+
+  /* Filter chips */
+  .plan-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 10px 0;
+  }
+  .plan-chip {
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    color: var(--ink);
+    opacity: 0.75;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0;
+    transition: background var(--transition), opacity var(--transition), border-color var(--transition);
+  }
+  .plan-chip:hover { opacity: 1; }
+  .plan-chip.active {
+    background: var(--brand-grad);
+    color: white;
+    border-color: transparent;
+    opacity: 1;
+  }
+  .plan-chip-count {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 6px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 99px;
+    font-size: 11px;
+  }
+  .plan-chip:not(.active) .plan-chip-count {
+    background: var(--surface);
+    color: var(--muted);
+  }
+
+  .plan-show-dont-meet {
+    display: inline-block;
+    margin: 8px 0;
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--muted);
+    border-radius: var(--radius-input);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .plan-show-dont-meet:hover { color: var(--err); border-color: var(--err); }
+
+  /* Attendee row */
+  .plan-attendee-list { display: flex; flex-direction: column; gap: 8px; }
+  .attendee-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    transition: border-color 120ms ease;
+  }
+  .attendee-row:hover { border-color: var(--accent-soft, #c4b5fd); }
+  .attendee-row-header {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    gap: 12px;
+    align-items: center;
+  }
+  .attendee-score {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: white;
+    flex-shrink: 0;
+  }
+  .attendee-score.score-4 { background: var(--success); }
+  .attendee-score.score-3 { background: var(--summarizing); }
+  .attendee-score.score-2 { background: var(--muted); }
+  .attendee-score.score-1 { background: var(--err); }
+  .attendee-score.score-unscored {
+    background: var(--surface-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .attendee-row-main { min-width: 0; }
+  .attendee-row-name { font-weight: 600; color: var(--ink); font-size: 14px; }
+  .attendee-row-company { color: var(--muted); font-size: 12px; margin-top: 1px; }
+  .attendee-row-reason {
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 6px;
+  }
+  .attendee-row-actions { display: flex; align-items: center; gap: 6px; }
+  .attendee-promote-btn {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 12px;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-input);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .attendee-promote-btn:hover { background: var(--accent); color: white; }
+  .attendee-promote-btn:disabled { opacity: 0.5; cursor: wait; }
+  .attendee-promoted {
+    color: var(--success);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  .attendee-details {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .attendee-details summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 12px;
+    user-select: none;
+  }
+  .attendee-details summary:hover { color: var(--ink); }
+  .attendee-section { margin-top: 8px; font-size: 13px; line-height: 1.5; color: var(--ink); }
+  .attendee-section-label {
+    display: inline-block;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+  .attendee-source {
+    display: inline-block;
+    padding: 1px 8px;
+    background: var(--surface-2);
+    border-radius: 99px;
+    color: var(--muted);
+    font-size: 11px;
+    text-decoration: none;
+    margin-right: 4px;
+  }
+  .attendee-source:hover { color: var(--accent); }
+
+  @media (max-width: 480px) {
+    .attendee-row-header { grid-template-columns: 36px 1fr; row-gap: 8px; }
+    .attendee-row-actions { grid-column: 1 / -1; justify-content: flex-end; }
+    .attendee-score { width: 36px; height: 36px; font-size: 15px; }
+  }
+
   /* ----- Notes top-level tab ----------------------------------------- */
   .recent-notes-title {
     margin: 24px 0 10px;
@@ -2762,6 +3024,18 @@
       <span>Conversation</span>
       <span class="live-dot" aria-hidden="true"></span>
     </button>
+    <button class="tab" id="tab-plan-btn" role="tab" aria-selected="false" data-tab="plan">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <!-- Calendar + check: pre-event planning -->
+        <rect x="3" y="4" width="18" height="17" rx="2"/>
+        <line x1="3" y1="9" x2="21" y2="9"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <polyline points="9 14 11 16 15 12"/>
+      </svg>
+      <span>Plan</span>
+    </button>
     <button class="tab" id="tab-notes-btn" role="tab" aria-selected="false" data-tab="notes">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2957,6 +3231,45 @@
     <div id="summary"></div>
   </section>
   </div><!-- /#tab-conversation -->
+
+  <div class="tab-content" id="tab-plan" role="tabpanel" aria-labelledby="tab-plan-btn" hidden>
+  <section class="panel">
+    <h2><span class="step">P</span>Plan<span class="chip" id="planCountChip">0</span></h2>
+    <p class="library-tagline">Upload an attendee list before a conference. AI scores each row 1-4 against your company's offering so you know who to prioritize meeting.</p>
+
+    <!-- Conferences list / detail switcher -->
+    <div id="planView">
+      <div id="planListView">
+        <div class="row" style="margin: 10px 0;">
+          <div class="grow"></div>
+          <button id="newConfBtn" class="btn-lg">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>New conference</span>
+          </button>
+        </div>
+        <div id="confList" class="history-list">
+          <div class="history-empty">Loading…</div>
+        </div>
+      </div>
+
+      <div id="planDetailView" hidden>
+        <button id="planBackBtn" class="secondary plan-back-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+          All conferences
+        </button>
+        <div id="confDetail"></div>
+      </div>
+    </div>
+  </section>
+  </div><!-- /#tab-plan -->
 
   <div class="tab-content" id="tab-notes" role="tabpanel" aria-labelledby="tab-notes-btn" hidden>
   <section class="panel">
@@ -3485,6 +3798,7 @@ applyAuthMode();
 const TAB_BTNS = {
   card:         document.getElementById("tab-card-btn"),
   conversation: document.getElementById("tab-conv-btn"),
+  plan:         document.getElementById("tab-plan-btn"),
   notes:        document.getElementById("tab-notes-btn"),
   history:      document.getElementById("tab-history-btn"),
   admin:        document.getElementById("tab-admin-btn"),
@@ -3492,6 +3806,7 @@ const TAB_BTNS = {
 const TAB_PANES = {
   card:         document.getElementById("tab-card"),
   conversation: document.getElementById("tab-conversation"),
+  plan:         document.getElementById("tab-plan"),
   notes:        document.getElementById("tab-notes"),
   history:      document.getElementById("tab-history"),
   admin:        document.getElementById("tab-admin"),
@@ -3513,6 +3828,7 @@ function setActiveTab(name, { fromHashChange = false } = {}) {
   if (name === "admin") loadAdminStats();
   if (name === "history") loadHistory();
   if (name === "notes") loadNotesTab();
+  if (name === "plan") loadPlanTab();
   // Keep top of new view in view; iOS Safari can leave you mid-scroll otherwise.
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -5626,6 +5942,327 @@ if (recentNotesListEl) {
     renderHistoryList();
   });
 }
+
+// =========================================================================
+// Plan tab — pre-conference attendee scoring
+// =========================================================================
+
+const planListView   = document.getElementById("planListView");
+const planDetailView = document.getElementById("planDetailView");
+const planBackBtn    = document.getElementById("planBackBtn");
+const newConfBtn     = document.getElementById("newConfBtn");
+const confListEl     = document.getElementById("confList");
+const confDetailEl   = document.getElementById("confDetail");
+const planCountChip  = document.getElementById("planCountChip");
+
+let planState = {
+  conferences: null,           // array from /conferences
+  currentConfId: null,         // detail view target
+  currentConf: null,           // last-loaded detail payload
+  filter: "score",             // "score" (default desc) | "must" | "good" | "skip"
+  showDontMeet: false,         // expander toggle for score=1
+  pollTimer: null,             // setInterval while pending rows exist
+};
+
+async function loadPlanTab() {
+  await refreshConferencesList();
+}
+
+async function refreshConferencesList() {
+  try {
+    const r = await authFetch("/conferences");
+    if (!r.ok) throw new Error("status " + r.status);
+    planState.conferences = await r.json();
+    renderConferencesList();
+  } catch (err) {
+    confListEl.innerHTML = `<div class="history-empty err">Could not load conferences: ${escapeHtml(err.message || err)}</div>`;
+  }
+}
+
+function renderConferencesList() {
+  const list = planState.conferences || [];
+  planCountChip.textContent = list.length;
+  if (!list.length) {
+    confListEl.innerHTML = `<div class="history-empty">No conferences yet. Create one and upload your attendee list to start.</div>`;
+    return;
+  }
+  confListEl.innerHTML = list.map(c => `
+    <button type="button" class="conf-row" data-conf-id="${escapeHtml(c.id)}">
+      <div class="conf-row-name">${escapeHtml(c.name)}</div>
+      <div class="conf-row-meta">${escapeHtml(
+        c.start_date ? "Starts " + fmtRelative(c.start_date) :
+        "Created " + fmtRelative(c.created_at)
+      )}</div>
+    </button>
+  `).join("");
+}
+
+newConfBtn?.addEventListener("click", async () => {
+  const name = window.prompt("Conference name (e.g. IEEE PES T&D 2026):");
+  if (!name || !name.trim()) return;
+  try {
+    const r = await authFetch("/conferences", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    if (!r.ok) throw new Error("Create failed: " + r.status);
+    const created = await r.json();
+    await refreshConferencesList();
+    openConferenceDetail(created.id);
+  } catch (err) {
+    alert(err.message || String(err));
+  }
+});
+
+confListEl?.addEventListener("click", (e) => {
+  const row = e.target.closest(".conf-row");
+  if (!row) return;
+  openConferenceDetail(row.dataset.confId);
+});
+
+planBackBtn?.addEventListener("click", () => {
+  if (planState.pollTimer) { clearInterval(planState.pollTimer); planState.pollTimer = null; }
+  planState.currentConfId = null;
+  planState.currentConf = null;
+  planDetailView.hidden = true;
+  planListView.hidden = false;
+  refreshConferencesList();
+});
+
+async function openConferenceDetail(confId) {
+  planState.currentConfId = confId;
+  planListView.hidden = true;
+  planDetailView.hidden = false;
+  confDetailEl.innerHTML = `<div class="history-empty">Loading…</div>`;
+  await refreshConferenceDetail();
+  schedulePollingIfNeeded();
+}
+
+async function refreshConferenceDetail() {
+  if (!planState.currentConfId) return;
+  try {
+    const r = await authFetch("/conferences/" + encodeURIComponent(planState.currentConfId));
+    if (!r.ok) throw new Error("status " + r.status);
+    planState.currentConf = await r.json();
+    renderConferenceDetail();
+  } catch (err) {
+    confDetailEl.innerHTML = `<div class="history-empty err">${escapeHtml(err.message || err)}</div>`;
+  }
+}
+
+function schedulePollingIfNeeded() {
+  if (planState.pollTimer) { clearInterval(planState.pollTimer); planState.pollTimer = null; }
+  const attendees = planState.currentConf?.attendees || [];
+  const pending = attendees.filter(a => a.status === "pending" || a.status === "researching").length;
+  if (pending > 0) {
+    planState.pollTimer = setInterval(async () => {
+      if (!planState.currentConfId) return;
+      await refreshConferenceDetail();
+      const remaining = (planState.currentConf?.attendees || [])
+        .filter(a => a.status === "pending" || a.status === "researching").length;
+      if (remaining === 0 && planState.pollTimer) {
+        clearInterval(planState.pollTimer); planState.pollTimer = null;
+      }
+    }, 5000);
+  }
+}
+
+function renderConferenceDetail() {
+  const conf = planState.currentConf;
+  if (!conf) return;
+  const attendees = conf.attendees || [];
+  const total = attendees.length;
+  const scored  = attendees.filter(a => a.status === "scored").length;
+  const errored = attendees.filter(a => a.status === "error").length;
+  const inFlight = total - scored - errored;
+
+  const byScore = {1: [], 2: [], 3: [], 4: []};
+  for (const a of attendees) if (a.score) byScore[a.score].push(a);
+
+  const filter = planState.filter;
+  let visible = attendees;
+  if (filter === "must")  visible = byScore[4];
+  if (filter === "good")  visible = byScore[3];
+  if (filter === "skip")  visible = byScore[2];
+  if (filter === "score") {
+    // default ordering: 4 → 3 → 2; "Don't meet" (1) hidden by default
+    // and surfaced via the expander.
+    visible = [...byScore[4], ...byScore[3], ...byScore[2]];
+    if (planState.showDontMeet) visible = visible.concat(byScore[1]);
+  }
+
+  const chip = (key, label, count, cls) => `
+    <button type="button" class="plan-chip ${planState.filter === key ? "active" : ""} ${cls || ""}"
+            data-plan-filter="${key}">
+      ${escapeHtml(label)} <span class="plan-chip-count">${count}</span>
+    </button>`;
+
+  const progressHtml = inFlight > 0
+    ? `<div class="plan-progress">
+        <div class="progressbar show"><span></span></div>
+        Scoring ${inFlight} of ${total}…
+      </div>`
+    : (errored > 0
+        ? `<div class="status err show">${errored} attendee${errored===1?"":"s"} failed to score. They'll stay in the list as 'error'.</div>`
+        : "");
+
+  const hasAttendees = total > 0;
+  const dontMeetExpander = (filter === "score" && byScore[1].length > 0)
+    ? `<button type="button" class="plan-show-dont-meet" id="planShowDontMeet">
+         ${planState.showDontMeet ? "Hide" : "Show"} ${byScore[1].length} "Don't meet"
+       </button>`
+    : "";
+
+  const uploadHtml = `
+    <div class="plan-upload-row">
+      <label class="plan-upload-btn">
+        <input type="file" id="confUploadInput" accept=".xlsx" class="vh"/>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        ${hasAttendees ? "Upload more" : "Upload attendee list (.xlsx)"}
+      </label>
+      <button type="button" id="confDeleteBtn" class="secondary plan-delete-btn">Delete conference</button>
+    </div>`;
+
+  confDetailEl.innerHTML = `
+    <div class="plan-conf-header">
+      <h3 class="plan-conf-title">${escapeHtml(conf.name)}</h3>
+      ${total > 0 ? `<div class="plan-conf-counts">
+        ${total} attendee${total===1?"":"s"} ·
+        <span class="pcc-must">${byScore[4].length} must</span> ·
+        <span class="pcc-good">${byScore[3].length} good</span> ·
+        <span class="pcc-skip">${byScore[2].length} skip</span> ·
+        <span class="pcc-dont">${byScore[1].length} don't</span>
+      </div>` : ""}
+    </div>
+
+    ${uploadHtml}
+    ${progressHtml}
+
+    ${hasAttendees ? `
+      <div class="plan-filters">
+        ${chip("score", "Ranked",   byScore[4].length + byScore[3].length + byScore[2].length)}
+        ${chip("must",  "Must (4)", byScore[4].length, "pcc-must")}
+        ${chip("good",  "Good (3)", byScore[3].length, "pcc-good")}
+        ${chip("skip",  "Skip (2)", byScore[2].length, "pcc-skip")}
+      </div>
+      <div class="plan-attendee-list">${visible.map(renderAttendeeRow).join("") || `<div class="history-empty">No matches in this filter.</div>`}</div>
+      ${dontMeetExpander}
+    ` : `<div class="history-empty">Upload your xlsx attendee list above to start scoring.</div>`}
+  `;
+}
+
+function renderAttendeeRow(a) {
+  const name = [a.first_name, a.last_name].filter(Boolean).join(" ") || "(unknown)";
+  const scoreCls  = a.score ? `score-${a.score}` : "score-unscored";
+  const scoreLbl  = a.score ? String(a.score) : (a.status === "error" ? "!" : "…");
+  const reason    = a.score_reason || (a.status === "error" ? a.error : "Scoring…");
+  const promoted  = !!a.promoted_card_id;
+  const company   = a.company || "—";
+  return `
+    <div class="attendee-row" data-attendee-id="${escapeHtml(a.id)}">
+      <div class="attendee-row-header">
+        <span class="attendee-score ${scoreCls}">${escapeHtml(scoreLbl)}</span>
+        <div class="attendee-row-main">
+          <div class="attendee-row-name">${escapeHtml(name)}</div>
+          <div class="attendee-row-company">${escapeHtml(company)}</div>
+          ${reason ? `<div class="attendee-row-reason">${escapeHtml(reason)}</div>` : ""}
+        </div>
+        <div class="attendee-row-actions">
+          ${promoted
+            ? `<span class="attendee-promoted">In Library</span>`
+            : (a.status === "scored"
+                ? `<button type="button" class="attendee-promote-btn" data-attendee-id="${escapeHtml(a.id)}">Add to Library</button>`
+                : "")}
+        </div>
+      </div>
+      ${(a.company_brief || a.rep_brief || (a.sources || []).length) ? `
+        <details class="attendee-details">
+          <summary>Show research</summary>
+          ${a.company_brief ? `<div class="attendee-section"><span class="attendee-section-label">Company</span> ${escapeHtml(a.company_brief)}</div>` : ""}
+          ${a.rep_brief ? `<div class="attendee-section"><span class="attendee-section-label">Person</span> ${escapeHtml(a.rep_brief)}</div>` : ""}
+          ${(a.sources || []).length ? `<div class="attendee-section"><span class="attendee-section-label">Sources</span> ${
+            a.sources.map(u => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer" class="attendee-source">${escapeHtml(new URL(u, window.location.href).hostname.replace(/^www\./, ""))}</a>`).join(" · ")
+          }</div>` : ""}
+        </details>` : ""}
+    </div>`;
+}
+
+confDetailEl?.addEventListener("click", async (e) => {
+  // Filter chips
+  const chip = e.target.closest(".plan-chip");
+  if (chip) {
+    planState.filter = chip.dataset.planFilter;
+    renderConferenceDetail();
+    return;
+  }
+  // Show/hide "Don't meet"
+  if (e.target.closest("#planShowDontMeet")) {
+    planState.showDontMeet = !planState.showDontMeet;
+    renderConferenceDetail();
+    return;
+  }
+  // Promote to Library
+  const promoteBtn = e.target.closest(".attendee-promote-btn");
+  if (promoteBtn) {
+    promoteBtn.disabled = true;
+    promoteBtn.textContent = "Adding…";
+    try {
+      const r = await authFetch(
+        "/attendees/" + encodeURIComponent(promoteBtn.dataset.attendeeId) + "/promote",
+        { method: "POST" }
+      );
+      if (!r.ok) throw new Error("Promote failed: " + r.status);
+      await refreshConferenceDetail();
+    } catch (err) {
+      promoteBtn.disabled = false;
+      promoteBtn.textContent = "Add to Library";
+      alert(err.message || String(err));
+    }
+    return;
+  }
+  // Delete conference
+  if (e.target.closest("#confDeleteBtn")) {
+    if (!window.confirm("Delete this conference and all its attendees? This can't be undone.")) return;
+    try {
+      const r = await authFetch("/conferences/" + encodeURIComponent(planState.currentConfId), { method: "DELETE" });
+      if (!r.ok) throw new Error("Delete failed: " + r.status);
+      planBackBtn.click();
+    } catch (err) {
+      alert(err.message || String(err));
+    }
+  }
+});
+
+confDetailEl?.addEventListener("change", async (e) => {
+  if (e.target.id !== "confUploadInput") return;
+  const file = e.target.files?.[0];
+  if (!file) return;
+  e.target.value = "";   // reset so the same file can be re-picked
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  try {
+    const r = await authFetch(
+      "/conferences/" + encodeURIComponent(planState.currentConfId) + "/attendees-upload",
+      { method: "POST", body: fd },
+    );
+    if (!r.ok) {
+      const detail = await r.text().catch(() => "");
+      throw new Error("Upload failed: " + r.status + (detail ? " — " + detail : ""));
+    }
+    const body = await r.json();
+    console.log("Uploaded:", body);
+    await refreshConferenceDetail();
+    schedulePollingIfNeeded();
+  } catch (err) {
+    alert(err.message || String(err));
+  }
+});
 
 async function loadHistory() {
   // Fan out four parallel calls (cards, convs, note counts, recent notes

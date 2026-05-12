@@ -11,3 +11,6 @@ python-dotenv==1.0.1
 # Auth (slice 3)
 argon2-cffi==23.1.0
 python-jose[cryptography]==3.3.0
+
+# Conference attendee xlsx parsing (Plan tab)
+openpyxl==3.1.5

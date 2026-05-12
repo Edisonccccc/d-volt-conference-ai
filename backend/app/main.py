@@ -29,8 +29,17 @@ from .auth import (
 )
 from .company_profile import get_or_fetch_company_profile
 from .conversation import summarize_conversation
+from .attendee_scoring import (
+    parse_attendee_xlsx,
+    score_conference_attendees,
+)
 from .models import (
+    Attendee,
     AuthResponse,
+    Conference,
+    ConferenceCreate,
+    ExtractedCard,
+    CompanyResearch,
     Note,
     NoteCreate,
     NoteUpdate,
@@ -888,6 +897,182 @@ def delete_note_endpoint(
         raise HTTPException(status_code=404, detail="Note not found")
     storage.delete_note(note_id, user_id=_scope_for(user))
     return {"ok": True, "id": note_id}
+
+
+# ===========================================================================
+# Conferences + Attendees — pre-event scoring (Plan tab)
+# ===========================================================================
+
+
+def _seller_company_for(user: User) -> Optional[str]:
+    """All conference-scoped reads/writes use the seller-company (team
+    scope) instead of user_id. None if the user has no company set."""
+    return (user.company or "").strip() or None
+
+
+@app.post("/conferences", response_model=Conference, status_code=201)
+def create_conference_endpoint(
+    payload: ConferenceCreate, user: User = Depends(current_user),
+) -> Conference:
+    return storage.create_conference(
+        payload.name,
+        seller_company=_seller_company_for(user),
+        owner_user_id=user.id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+    )
+
+
+@app.get("/conferences", response_model=list[Conference])
+def list_conferences_endpoint(user: User = Depends(current_user)) -> list[Conference]:
+    return storage.list_conferences(seller_company=_seller_company_for(user))
+
+
+@app.get("/conferences/{conf_id}")
+def get_conference_endpoint(
+    conf_id: str, user: User = Depends(current_user),
+) -> dict:
+    conf = storage.get_conference(conf_id, seller_company=_seller_company_for(user))
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Conference not found")
+    attendees = storage.list_attendees(conf_id)
+    return {
+        **conf.model_dump(),
+        "attendees": [a.model_dump() for a in attendees],
+    }
+
+
+@app.delete("/conferences/{conf_id}")
+def delete_conference_endpoint(
+    conf_id: str, user: User = Depends(current_user),
+) -> dict:
+    conf = storage.get_conference(conf_id, seller_company=_seller_company_for(user))
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Conference not found")
+    # Owner or manager only.
+    if user.role != "manager" and conf.owner_user_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the uploader or a manager can delete this conference.",
+        )
+    storage.delete_conference(conf_id)
+    return {"ok": True, "id": conf_id}
+
+
+@app.post("/conferences/{conf_id}/attendees-upload")
+async def upload_attendees(
+    conf_id: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+) -> dict:
+    """Parse the uploaded xlsx, insert rows as pending attendees, and kick
+    off background AI scoring. Returns immediately with the row count."""
+    conf = storage.get_conference(conf_id, seller_company=_seller_company_for(user))
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Conference not found")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty upload")
+    # Hard cap to keep memory bounded — 200K rows would be absurd for an
+    # event attendee list; this is just defense in depth.
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (>10 MB)")
+    try:
+        rows = parse_attendee_xlsx(contents)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("xlsx parse failed for conf %s", conf_id)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not parse xlsx: {exc.__class__.__name__}: {exc}",
+        )
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="No usable rows found. Expected columns First Name / Last Name / Company.",
+        )
+
+    new_ids = storage.insert_attendees(conf_id, rows)
+    log.info("conference %s: inserted %d attendees, scoring kickoff…",
+             conf_id, len(new_ids))
+
+    # Fan out scoring in the background. Idempotent: only rows in
+    # 'pending' state get processed, so re-uploading or hitting refresh
+    # won't double-score.
+    background_tasks.add_task(
+        score_conference_attendees,
+        conf_id,
+        _seller_company_for(user),
+    )
+
+    return {
+        "ok":          True,
+        "conference":  conf_id,
+        "added":       len(new_ids),
+        "status":      "scoring",
+    }
+
+
+@app.get("/attendees/{attendee_id}", response_model=Attendee)
+def get_attendee_endpoint(
+    attendee_id: str, user: User = Depends(current_user),
+) -> Attendee:
+    att = storage.get_attendee(attendee_id)
+    if att is None:
+        raise HTTPException(status_code=404, detail="Attendee not found")
+    # Auth via the parent conference's seller-company scope.
+    conf = storage.get_conference(
+        att.conference_id, seller_company=_seller_company_for(user),
+    )
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Attendee not found")
+    return att
+
+
+@app.post("/attendees/{attendee_id}/promote")
+def promote_attendee(
+    attendee_id: str, user: User = Depends(current_user),
+) -> dict:
+    """Create a Library card from a scored attendee. The company_brief and
+    rep_brief from scoring are carried over as the initial research so the
+    rep doesn't have to re-run research at the conference."""
+    att = storage.get_attendee(attendee_id)
+    if att is None:
+        raise HTTPException(status_code=404, detail="Attendee not found")
+    conf = storage.get_conference(
+        att.conference_id, seller_company=_seller_company_for(user),
+    )
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Attendee not found")
+    if att.promoted_card_id:
+        # Idempotent: already promoted — return the existing card.
+        return {"ok": True, "card_id": att.promoted_card_id, "promoted": False}
+
+    # Build a Card from the attendee's data. Status='ready' so it shows
+    # up in the rep's Library immediately without going through extraction.
+    card_id = uuid.uuid4().hex[:12]
+    full_name = " ".join(filter(None, [att.first_name, att.last_name])).strip()
+    # We need a photo_path because the schema requires it. Use a sentinel
+    # path — the photo route returns 404 if the file is missing, which the
+    # frontend already handles. No image is uploaded for promoted attendees.
+    sentinel_path = str(storage.upload_dir() / f"{card_id}.placeholder")
+    storage.create_card(card_id, sentinel_path, user_id=user.id)
+    storage.update_extracted(card_id, ExtractedCard(
+        name=full_name or None,
+        company=att.company,
+    ))
+    storage.update_research(card_id, CompanyResearch(
+        one_liner=att.company_brief or None,
+        contact_brief=att.rep_brief or None,
+        sources=list(att.sources or []),
+    ))
+    storage.update_status(card_id, "ready")
+    storage.mark_attendee_promoted(attendee_id, card_id)
+
+    log.info("attendee %s promoted to card %s by rep %s",
+             attendee_id, card_id, user.id)
+    return {"ok": True, "card_id": card_id, "promoted": True}
 
 
 # ===========================================================================

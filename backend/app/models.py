@@ -257,3 +257,59 @@ class NoteUpdate(BaseModel):
     body: Optional[str] = Field(default=None, max_length=5000)
     subject: Optional[str] = Field(default=None, max_length=200)
     card_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Conference planning — pre-event attendee scoring
+# ---------------------------------------------------------------------------
+
+
+class Conference(BaseModel):
+    """A trade-show / conference the seller is attending. Team-shared so
+    every rep at the same seller-company sees the same attendee list."""
+
+    id: str
+    name: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    seller_company: Optional[str] = None
+    owner_user_id: Optional[str] = None  # who uploaded
+    created_at: str
+    updated_at: str
+
+
+class ConferenceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    start_date: Optional[str] = Field(default=None, max_length=40)
+    end_date: Optional[str] = Field(default=None, max_length=40)
+
+
+AttendeeStatus = Literal["pending", "researching", "scored", "error"]
+
+
+class Attendee(BaseModel):
+    """A row from an uploaded conference attendee xlsx, scored by AI for
+    'should this rep prioritize meeting them at the conference?'."""
+
+    id: str
+    conference_id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company: Optional[str] = None
+    raw_row: dict = Field(default_factory=dict)
+    status: AttendeeStatus = "pending"
+
+    # AI fields (filled by the scoring agent)
+    company_brief: Optional[str] = None
+    rep_brief: Optional[str] = None
+    score: Optional[int] = Field(default=None, ge=1, le=4)
+    score_reason: Optional[str] = None
+    sources: List[str] = Field(default_factory=list)
+    cost_usd: float = 0.0
+    error: Optional[str] = None
+
+    # Promotion link (set when rep clicks "Add to Library").
+    promoted_card_id: Optional[str] = None
+
+    created_at: str
+    updated_at: str
