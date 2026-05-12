@@ -34,10 +34,11 @@ from .llm import make_client, stream_to_terminal
 log = logging.getLogger("conference-ai.attendee-scoring")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 
-# Concurrency cap. Keep modest so we don't blow through OTPM at the
-# Anthropic rate limit on a 200-row upload — each call uses web_search
-# which can pull a few thousand input tokens per attendee.
-SCORING_PARALLELISM = int(os.getenv("ATTENDEE_SCORING_PARALLELISM", "3"))
+# Concurrency cap. Conservative default (2) so a 200-row upload doesn't
+# blow through OTPM at the Anthropic rate limit — each call uses
+# web_search which can pull a few thousand input tokens per attendee.
+# Override with ATTENDEE_SCORING_PARALLELISM if you have higher tier limits.
+SCORING_PARALLELISM = int(os.getenv("ATTENDEE_SCORING_PARALLELISM", "2"))
 
 
 # ---------------------------------------------------------------------------
@@ -273,32 +274,31 @@ def score_attendee(
 ) -> Tuple[dict, float]:
     """Run one scoring call. Returns ``(result_dict, cost_usd)``.
 
-    On any failure, returns an empty-ish dict and zero cost so the caller
-    can mark the row as errored without crashing the batch.
+    Raises on API failure (rate limit, timeout, network) so the caller
+    can mark the row as 'error' rather than silently writing a null score.
     """
     client = make_client(timeout=90.0)
     label = f"score-{(last_name or 'x').lower()[:8]}"
-    try:
-        final = stream_to_terminal(
-            client,
-            label=label,
-            model=MODEL,
-            max_tokens=1024,
-            system=SYSTEM,
-            tools=[_ws_tool(3), SUBMIT_SCORE],
-            tool_choice={"type": "auto"},
-            messages=[{
-                "role": "user",
-                "content": _attendee_prompt(
-                    first_name, last_name, company,
-                    seller_company, seller_context,
-                ),
-            }],
-        )
-    except Exception as exc:  # noqa: BLE001
-        log.exception("score_attendee failed for %r %r: %s",
-                      first_name, last_name, exc)
-        return {}, 0.0
+    # No try/except around the SDK call — we want failures to bubble up
+    # to the batch worker, which marks the row as 'error'. Previously we
+    # swallowed exceptions here and the caller would write status='scored'
+    # with a NULL score, making failed rows invisible in the UI buckets.
+    final = stream_to_terminal(
+        client,
+        label=label,
+        model=MODEL,
+        max_tokens=1024,
+        system=SYSTEM,
+        tools=[_ws_tool(3), SUBMIT_SCORE],
+        tool_choice={"type": "auto"},
+        messages=[{
+            "role": "user",
+            "content": _attendee_prompt(
+                first_name, last_name, company,
+                seller_company, seller_context,
+            ),
+        }],
+    )
 
     cost = anthropic_cost(getattr(final, "usage", None), MODEL)
     for block in final.content:
@@ -306,8 +306,12 @@ def score_attendee(
             and getattr(block, "name", None) == "submit_attendee_score"):
             return dict(block.input or {}), cost
 
+    # The call succeeded but the model didn't emit the expected tool_use
+    # block. This is a soft failure — still costs money, so we DO record
+    # the cost, but we mark a manual-review fallback so the UI shows it.
     log.warning("score_attendee: model didn't call submit_attendee_score "
-                "for %r %r — defaulting to skip.", first_name, last_name)
+                "for %r %r — recording manual-review fallback.",
+                first_name, last_name)
     return {
         "score": 2,
         "score_reason": "Could not produce a scored verdict; manually review.",
@@ -339,8 +343,8 @@ def score_conference_attendees(
     )
 
     def _work(att) -> None:
-        storage.update_attendee_status(att.id, "researching")
         try:
+            storage.update_attendee_status(att.id, "researching")
             result, cost = score_attendee(
                 first_name=att.first_name,
                 last_name=att.last_name,
@@ -353,7 +357,12 @@ def score_conference_attendees(
                 score_int = int(score) if score is not None else None
             except (TypeError, ValueError):
                 score_int = None
-            if score_int is not None and not (1 <= score_int <= 4):
+            if score_int is None:
+                # Successful API call but no usable score — treat as error so
+                # the row stays visible and retryable rather than silently
+                # landing in a "scored with NULL" black hole.
+                raise ValueError("scoring call returned no usable score")
+            if not (1 <= score_int <= 4):
                 score_int = max(1, min(4, score_int))
             storage.update_attendee_score(
                 att.id,

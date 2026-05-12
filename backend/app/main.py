@@ -1014,6 +1014,28 @@ async def upload_attendees(
     }
 
 
+@app.post("/conferences/{conf_id}/rescore-failed")
+def rescore_failed_attendees(
+    conf_id: str,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
+) -> dict:
+    """Flip every 'error' (and legacy 'scored-with-NULL') attendee back to
+    'pending' and kick off scoring again. Useful when a rate-limit blip or
+    a network failure left half the list unscored."""
+    conf = storage.get_conference(conf_id, seller_company=_seller_company_for(user))
+    if conf is None:
+        raise HTTPException(status_code=404, detail="Conference not found")
+    n = storage.reset_unscored_to_pending(conf_id)
+    if n > 0:
+        background_tasks.add_task(
+            score_conference_attendees,
+            conf_id,
+            _seller_company_for(user),
+        )
+    return {"ok": True, "reset": n, "status": "scoring" if n else "noop"}
+
+
 @app.get("/attendees/{attendee_id}", response_model=Attendee)
 def get_attendee_endpoint(
     attendee_id: str, user: User = Depends(current_user),

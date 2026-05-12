@@ -1343,6 +1343,27 @@ def update_attendee_score(
         conn.commit()
 
 
+def reset_unscored_to_pending(conf_id: str) -> int:
+    """Flip 'error' rows AND legacy 'scored-with-NULL' rows back to 'pending'
+    so a retry pass picks them up. Returns the count reset.
+
+    The NULL-score case existed because an older version of score_attendee
+    swallowed API exceptions and still marked the row as 'scored'. We catch
+    both flavors here so retries work even on data created by the buggy
+    version.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _lock, _connect() as conn:
+        cur = conn.execute(
+            "UPDATE attendees SET status = 'pending', error = NULL, updated_at = ? "
+            "WHERE conference_id = ? "
+            "  AND (status = 'error' OR (status = 'scored' AND score IS NULL))",
+            (now, conf_id),
+        )
+        conn.commit()
+        return cur.rowcount
+
+
 def mark_attendee_promoted(attendee_id: str, card_id: str) -> bool:
     now = datetime.now(timezone.utc).isoformat()
     with _lock, _connect() as conn:

@@ -1214,6 +1214,35 @@
     font-size: 13px;
   }
   .plan-progress .progressbar { flex: 1; margin: 0; }
+  .plan-errored {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--err-soft);
+    border: 1px solid var(--err);
+    border-radius: var(--radius-input);
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .plan-errored-text { flex: 1; color: var(--ink); }
+  .plan-retry-btn {
+    margin: 0;
+    padding: 7px 14px;
+    font-size: 13px;
+    background: var(--err);
+    color: white;
+    border: none;
+    border-radius: var(--radius-input);
+    cursor: pointer;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .plan-retry-btn:hover { filter: brightness(1.05); }
+  .plan-retry-btn:disabled { opacity: 0.6; cursor: wait; }
+  @media (max-width: 480px) {
+    .plan-errored { flex-direction: column; align-items: stretch; }
+  }
 
   /* Filter chips */
   .plan-filters {
@@ -6073,8 +6102,13 @@ function renderConferenceDetail() {
   if (!conf) return;
   const attendees = conf.attendees || [];
   const total = attendees.length;
-  const scored  = attendees.filter(a => a.status === "scored").length;
-  const errored = attendees.filter(a => a.status === "error").length;
+  // A row only counts as "scored" if it actually has a numeric score —
+  // the buggy code path could leave status='scored' with score=NULL.
+  // Treat those as a failure case so the UI surfaces them.
+  const scored  = attendees.filter(a => a.status === "scored" && a.score).length;
+  const errored = attendees.filter(a =>
+    a.status === "error" || (a.status === "scored" && !a.score)
+  ).length;
   const inFlight = total - scored - errored;
 
   const byScore = {1: [], 2: [], 3: [], 4: []};
@@ -6098,14 +6132,26 @@ function renderConferenceDetail() {
       ${escapeHtml(label)} <span class="plan-chip-count">${count}</span>
     </button>`;
 
-  const progressHtml = inFlight > 0
-    ? `<div class="plan-progress">
+  let progressHtml = "";
+  if (inFlight > 0) {
+    progressHtml = `<div class="plan-progress">
         <div class="progressbar show"><span></span></div>
         Scoring ${inFlight} of ${total}…
-      </div>`
-    : (errored > 0
-        ? `<div class="status err show">${errored} attendee${errored===1?"":"s"} failed to score. They'll stay in the list as 'error'.</div>`
-        : "");
+      </div>`;
+  } else if (errored > 0) {
+    // Rate-limit blips, network failures, or model no-tool-use responses
+    // land here. The retry button flips them back to 'pending' and runs
+    // the scorer again — usually just clears up on a second pass.
+    progressHtml = `<div class="plan-errored">
+        <div class="plan-errored-text">
+          <b>${errored}</b> attendee${errored===1?"":"s"} didn't score on the first pass
+          (rate-limit or network blip).
+        </div>
+        <button type="button" id="confRetryBtn" class="plan-retry-btn">
+          Retry ${errored} failed
+        </button>
+      </div>`;
+  }
 
   const hasAttendees = total > 0;
   const dontMeetExpander = (filter === "score" && byScore[1].length > 0)
@@ -6226,6 +6272,27 @@ confDetailEl?.addEventListener("click", async (e) => {
     }
     return;
   }
+  // Retry failed attendees
+  const retryBtn = e.target.closest("#confRetryBtn");
+  if (retryBtn) {
+    retryBtn.disabled = true;
+    retryBtn.textContent = "Retrying…";
+    try {
+      const r = await authFetch(
+        "/conferences/" + encodeURIComponent(planState.currentConfId) + "/rescore-failed",
+        { method: "POST" },
+      );
+      if (!r.ok) throw new Error("Retry failed: " + r.status);
+      await refreshConferenceDetail();
+      schedulePollingIfNeeded();
+    } catch (err) {
+      retryBtn.disabled = false;
+      retryBtn.textContent = "Retry failed";
+      alert(err.message || String(err));
+    }
+    return;
+  }
+
   // Delete conference
   if (e.target.closest("#confDeleteBtn")) {
     if (!window.confirm("Delete this conference and all its attendees? This can't be undone.")) return;
