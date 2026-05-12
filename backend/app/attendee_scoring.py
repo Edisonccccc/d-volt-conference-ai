@@ -29,16 +29,23 @@ from . import storage
 from .company_profile import get_or_fetch_company_profile
 from .costing import anthropic_cost
 from .llm import make_client, stream_to_terminal
+from .rate_limit import attendee_bucket
 
 
 log = logging.getLogger("conference-ai.attendee-scoring")
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 
-# Concurrency cap. Conservative default (2) so a 200-row upload doesn't
-# blow through OTPM at the Anthropic rate limit — each call uses
-# web_search which can pull a few thousand input tokens per attendee.
-# Override with ATTENDEE_SCORING_PARALLELISM if you have higher tier limits.
-SCORING_PARALLELISM = int(os.getenv("ATTENDEE_SCORING_PARALLELISM", "2"))
+# Concurrency cap. The token bucket protects against rate-limit blowups,
+# so we can keep parallelism reasonably high — bucket will throttle when
+# needed. Default 5; tune via ATTENDEE_SCORING_PARALLELISM env var.
+SCORING_PARALLELISM = int(os.getenv("ATTENDEE_SCORING_PARALLELISM", "5"))
+
+# Per-call token estimates used to reserve budget BEFORE the call.
+# Real numbers from observed runs: ~5K input (prompt + web search results)
+# and ~600 output. We bake in some headroom on input so the reservation
+# isn't too optimistic — actual ITPM consumption is the bigger constraint.
+EST_INPUT_TOKENS  = int(os.getenv("ATTENDEE_EST_INPUT_TOKENS",  "6000"))
+EST_OUTPUT_TOKENS = int(os.getenv("ATTENDEE_EST_OUTPUT_TOKENS", "1000"))
 
 
 # ---------------------------------------------------------------------------
@@ -153,12 +160,15 @@ def parse_attendee_xlsx(blob: bytes) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 SYSTEM = (
-    "You triage sales-conference attendees for a B2B seller. For each "
-    "person, you use web search to look up their company and their role, "
-    "then score them 1-4 on whether the seller should prioritize meeting "
-    "them at the event. You are biased toward 'skip' or 'don't meet' when "
-    "evidence is thin — conferences are short and reps' time is finite. "
-    "Never invent biographical facts about a real individual."
+    "You triage sales-conference attendees for a B2B seller. The goal is "
+    "to find REAL DEMAND signals: companies that look like they need what "
+    "the seller offers, especially right now. You use web search to study "
+    "the COMPANY — its products, recent news (last 90 days), expansion or "
+    "M&A activity, hiring trends, technical priorities — and score the "
+    "candidate 1-4. Role of the specific rep is secondary; their company's "
+    "demand signal is what matters. You are biased toward 'skip' or 'don't "
+    "meet' when evidence is thin — conferences are short and reps' time "
+    "is finite. Never invent biographical facts about a real individual."
 )
 
 
@@ -241,25 +251,38 @@ ATTENDEE:
 - Name:    {full_name}
 - Company: {company or "(unknown)"}
 
-GOAL: Score this person for the seller's conference meeting shortlist.
+GOAL: Score the COMPANY for the seller's conference meeting shortlist.
+Focus on whether {seller_company}'s offering matches a real, current need.
 
 Steps:
-1. Search the company name to understand what they do, who they sell to,
-   and whether there's a plausible fit with {seller_company}'s offering.
-   Consider: are they a customer-shaped account, a partner/integrator,
-   a supplier, a competitor, or unrelated?
-2. Search for the person ("<full name> <company>" or
-   "site:linkedin.com/in <name> <company>") to determine their role.
-   If you can't find them with confidence, leave `rep_brief` empty.
-3. Decide a score 1-4 and write a terse 1-2 sentence reason.
+1. Search the company. Pull recent signals (last ~90 days strongly
+   preferred): news, press releases, executive announcements, M&A,
+   technology partnerships, RFPs, expansion, hiring spikes, regulatory
+   filings — anything that hints at active demand for what
+   {seller_company} sells.
+2. Cross-reference what the company does (products / services /
+   customer base) against the seller's offering. Is there a plausible
+   buyer-seller fit? Is this an existing or near-term need, or
+   speculative?
+3. DO NOT run a separate dedicated search for the individual rep. If
+   the rep's name + title appears organically in the company-side
+   results, you may use it; otherwise leave `rep_brief` empty. Time
+   spent on rep lookups is better spent on demand signals.
+4. Score 1-4 weighted heavily on company-side demand signal; rep role
+   is a tie-breaker, not the primary driver.
 
 Scoring guide:
-- 4 (MUST): strong fit company AND decision-influencing role.
-- 3 (GOOD): strong fit company, role unclear or operational.
-- 2 (SKIP): weak fit, peripheral, or speculative.
-- 1 (DON'T MEET): clearly no fit (e.g. competitor, irrelevant industry).
+- 4 (MUST):       clear ICP fit AND a concrete recent signal indicating
+                  active demand (a real opening to walk into).
+- 3 (GOOD):       solid ICP fit, no specific timing signal — still worth
+                  the conversation.
+- 2 (CAN SKIP):   peripheral / speculative fit, no urgency.
+- 1 (DON'T MEET): clearly no fit (e.g. competitor, irrelevant industry,
+                  wrong scale).
 
-Default to lower scores when evidence is thin. Call
+Default toward lower scores when signals are thin. Cite the SPECIFIC
+signal you found in `score_reason` ("Closed Series C in Feb; expanding
+manufacturing capacity" beats "looks like a fit"). Call
 `submit_attendee_score` exactly once.
 """
 
@@ -274,31 +297,50 @@ def score_attendee(
 ) -> Tuple[dict, float]:
     """Run one scoring call. Returns ``(result_dict, cost_usd)``.
 
-    Raises on API failure (rate limit, timeout, network) so the caller
-    can mark the row as 'error' rather than silently writing a null score.
+    Acquires a token-bucket reservation BEFORE the SDK call so concurrent
+    workers don't burst past the Anthropic ITPM/OTPM caps. Raises on API
+    failure so the caller can mark the row as 'error'.
     """
     client = make_client(timeout=90.0)
     label = f"score-{(last_name or 'x').lower()[:8]}"
-    # No try/except around the SDK call — we want failures to bubble up
-    # to the batch worker, which marks the row as 'error'. Previously we
-    # swallowed exceptions here and the caller would write status='scored'
-    # with a NULL score, making failed rows invisible in the UI buckets.
-    final = stream_to_terminal(
-        client,
-        label=label,
-        model=MODEL,
-        max_tokens=1024,
-        system=SYSTEM,
-        tools=[_ws_tool(3), SUBMIT_SCORE],
-        tool_choice={"type": "auto"},
-        messages=[{
-            "role": "user",
-            "content": _attendee_prompt(
-                first_name, last_name, company,
-                seller_company, seller_context,
-            ),
-        }],
+
+    # Proactive rate-limit gate. Blocks until both ITPM + OTPM windows
+    # have room for our estimate; the SDK's own retry-on-429 is a backstop.
+    bucket = attendee_bucket()
+    reservation = bucket.acquire(
+        EST_INPUT_TOKENS, EST_OUTPUT_TOKENS, label=label,
     )
+
+    final = None
+    try:
+        final = stream_to_terminal(
+            client,
+            label=label,
+            model=MODEL,
+            max_tokens=1024,
+            system=SYSTEM,
+            tools=[_ws_tool(3), SUBMIT_SCORE],
+            tool_choice={"type": "auto"},
+            messages=[{
+                "role": "user",
+                "content": _attendee_prompt(
+                    first_name, last_name, company,
+                    seller_company, seller_context,
+                ),
+            }],
+        )
+    finally:
+        # True up the reservation with actuals (or zero if the call
+        # never produced usage — keeps the bucket from staying
+        # over-reserved when the SDK raises before we get a response).
+        usage = getattr(final, "usage", None) if final is not None else None
+        actual_in  = int(getattr(usage, "input_tokens",  0) or 0)
+        actual_out = int(getattr(usage, "output_tokens", 0) or 0)
+        # web_search adds input tokens via tool results; include cache
+        # accounting too so the bucket doesn't under-count.
+        actual_in += int(getattr(usage, "cache_read_input_tokens",     0) or 0)
+        actual_in += int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        bucket.record(reservation, actual_in, actual_out)
 
     cost = anthropic_cost(getattr(final, "usage", None), MODEL)
     for block in final.content:
@@ -307,8 +349,7 @@ def score_attendee(
             return dict(block.input or {}), cost
 
     # The call succeeded but the model didn't emit the expected tool_use
-    # block. This is a soft failure — still costs money, so we DO record
-    # the cost, but we mark a manual-review fallback so the UI shows it.
+    # block. Treat as soft failure with a manual-review fallback.
     log.warning("score_attendee: model didn't call submit_attendee_score "
                 "for %r %r — recording manual-review fallback.",
                 first_name, last_name)
